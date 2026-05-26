@@ -1,0 +1,70 @@
+Created At: 2026-05-22T20:10:54Z
+Completed At: 2026-05-22T20:10:54Z
+File Path: `file:///c:/Driving%20School/src/pages/StudentDashboard.jsx`
+Total Lines: 780
+Total Bytes: 43649
+Showing lines 1 to 780
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import React, { useState, useEffect } from 'react';
+2: import { Link, useNavigate } from 'react-router-dom';
+3: import { useAuth } from '../context/AuthContext';
+4: import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+5: import { db } from '../firebase/config';
+6: 
+7: export default function StudentDashboard() {
+8:   const { currentUser, userProfile, loading, logout } = useAuth();
+9:   const [bookings, setBookings] = useState([]);
+10:   const [loadingBookings, setLoadingBookings] = useState(true);
+11:   const navigate = useNavigate();
+12: 
+13:   // If not loaded yet, show loading
+14:   // Redundant user check removed – approval and loading handled earlier
+15: 
+16:   // Redirect if student not approved
+17:   if (!userProfile || (userProfile.status ? userProfile.status.toLowerCase() : 'pending') !== 'approved') {
+18:     navigate('/login');
+19:     return null;
+20:   }
+21: 
+22:   // Admission Application Form States
+23:   const initialAppStatus = !!(userProfile?.hasSubmittedApplication || (userProfile?.nic && userProfile?.nic !== 'N/A'));
+24:   const [hasSubmittedApplication, setHasSubmittedApplication] = useState(initialAppStatus);
+25:   const [nic, setNic] = useState(userProfile?.nic && userProfile?.nic !== 'N/A' ? userProfile.nic : '');
+26:   const [dob, setDob] = useState(userProfile?.dob && userProfile?.dob !== 'N/A' ? userProfile.dob : '');
+27:   const [gender, setGender] = useState(userProfile?.gender || 'Male');
+28:   const [address, setAddress] = useState(userProfile?.address && userProfile?.address !== 'N/A' ? userProfile.address 
+<truncated 43869 bytes>
+   Our student support desk is available to assist you with package details or payment installments.
+749:                       </p>
+750:                       <button className="w-full py-4 bg-on-primary text-primary font-bold font-label-md text-label-md hover:bg-opacity-95 transition-all">
+751:                         Talk to Advisor
+752:                       </button>
+753:                     </div>
+754:                   </div>
+755:                 </div>
+756:               </>
+757:             )}
+758:           </>
+759:         )}
+760:       </main>
+761: 
+762:       {/* Footer */}
+763:       <footer className="bg-surface-container-lowest border-t border-outline-variant mt-20">
+764:         <div className="flex flex-col md:flex-row justify-between items-center w-full px-margin-mobile md:px-margin-desktop py-8 max-w-container-max mx-auto">
+765:           <div className="mb-4 md:mb-0 text-center md:text-left">
+766:             <span className="font-headline-sm text-headline-sm font-bold text-primary">Eranga Driving School</span>
+767:             <p className="font-label-sm text-label-sm text-on-surface-variant mt-1 uppercase tracking-widest">© 2026 REFINEMENT IN MOTION.</p>
+768:           </div>
+769:           <div className="flex flex-wrap justify-center gap-8">
+770:             <a className="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-all" href="#">Terms of Service</a>
+771:             <a className="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-all" href="#">Privacy Policy</a>
+772:             <a className="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-all" href="#">Help Center</a>
+773:             <a className="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-all" href="#">Contact</a>
+774:           </div>
+775:         </div>
+776:       </footer>
+777:     </div>
+778:   );
+779: }
+780: 
+The above content shows the entire, complete file contents of the requested file.

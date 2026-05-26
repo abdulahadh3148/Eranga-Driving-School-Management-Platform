@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+                  "surface": "#ffffff",
+                  "primary-container": "#e7eeff",
+                  "tertiary": "#3C1D00",
+                  "primary": "#0B2545",
+                  "on-tertiary-fixed": "#191c1e",
+                  "surface-container": "#ffffff",
+                  "secondary-fixed-dim": "#737373",
+                  "on-tertiary": "#ffffff",
+                  "tertiary-container": "#e5e5e5",
+                  "secondary-fixed": "#f5f5f5",
+                  "inverse-surface": "#0B2545",
+                  "inverse-primary": "#b4c5ff",
+                  "on-secondary-fixed-variant": "#38485d",
+                  "on-primary-fixed": "#00174b",
+                  "on-primary-container": "#0B2545",
+                  "primary-fixed": "#0B2545",
+                  "on-error-container": "#93000a",
+                  "inverse-on-surface": "#ecf1ff",
+                  "surface-container-lowest": "#ffffff",
+                  "outline-variant": "#dee2e6",
+                  "on-surface-variant": "#434655",
+                  "on-error": "#ffffff",
+                  "surface-variant": "#f8f9fa",
+                  "surface-container-high": "#f0f3ff",
+                  "surface-tint": "#0B2545",
+                  "on-background": "#111c2d",
+                  "background": "#F1F4F9",
+                  "on-secondary-container": "#171717",
+                  "tertiary-fixed-dim": "#a3a3a3",
+                  "surface-bright": "#ffffff",
+                  "error": "#ba1a1a",
+                  "surface-dim": "#f0f3ff",
+                  "on-surface": "#111c2d",
+                  "secondary-container": "#d0e1fb",
+                  "on-secondary": "#ffffff",
+                  "primary-fixed-dim": "#a3a3a3",
+                  "on-primary": "#ffffff",
+                  "secondary": "#8DA9C4",
+                  "on-tertiary-fixed-variant": "#444749",
+                  "error-container": "#ffdad6",
+                  "tertiary-fixed": "#e0e3e5",
+                  "outline": "#c3c6d7",
+                  "on-tertiary-container": "#eff1f3",
+                  "on-secondary-fixed": "#0a0a0a",
+                  "on-primary-fixed-variant": "#262626",
+                  "surface-container-low": "#ffffff",
+                  "surface-container-highest": "#dee8ff",
+                  "success-green": "#16a34a"
+          },
+          "borderRadius": {
+                  "DEFAULT": "0.25rem",
+                  "lg": "8px",
+                  "xl": "12px",
+                  "full": "9999px"
+          },
+          "spacing": {
+                  "xl": "32px",
+                  "lg": "24px",
+                  "margin-mobile": "16px",
+                  "md": "16px",
+                  "base": "4px",
+                  "sm": "12px",
+                  "gutter": "24px",
+                  "xs": "8px",
+                  "container-max": "1440px"
+          },
+          "fontFamily": {
+                  "body-lg": ["Inter"],
+                  "headline-lg": ["Hanken Grotesk"],
+                  "label-sm": ["Inter"],
+                  "headline-md": ["Hanken Grotesk"],
+                  "label-md": ["Inter"],
+                  "headline-xl": ["Hanken Grotesk"],
+                  "headline-lg-mobile": ["Hanken Grotesk"],
+                  "body-sm": ["Inter"],
+                  "body-md": ["Inter"]
+          },
+          "fontSize": {
+                  "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                  "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                  "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                  "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                  "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                  "headline-xl": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                  "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                  "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                  "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+          }
+        },
+      },
+    }
+    </script>
+    <style>
+      .glass {
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(226, 232, 240, 0.6);
+      }
+      .shadow-ambient {
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+      }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+    </style>
+    <title>Eranga Driving School – Best driving school in Sri Lanka</title>
+
+
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

@@ -1,0 +1,78 @@
+<USER_REQUEST>
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
+
+// ─── Sri Lankan RMV Actual Workflow ───────────────────────────────────────────
+// Step 1  – Medical Certificate (from RMV-registered medical officer)
+// Step 2  – DMT Application Submitted (Form A + supporting docs)
+// Step 3  – Theory / Written Exam (at DMT office, Colombo / Galle / Kandy)
+// Step 4  – Learner's Permit Issued (valid 3 months, must carry while driving)
+// Step 5  – Practical Training (minimum 3 months with permit; student drives with instructor)
+// Step 6  – Practical / Road Test at DMT (examiner grades you on a circuit)
+// Step 7  – License Issued  (printed & dispatched by DMT; takes 2–3 weeks)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RMV_STEPS = [
+  {
+    key: 'medical',
+    label: 'Medical Certificate',
+    icon: '🏥',
+    val: 14,
+    description: 'Obtain medical fitness certificate from an RMV-registered doctor.',
+    hint: 'Bring NIC + Rs. 500–1,000 fee. Valid for 6 months.',
+  },
+  {
+    key: 'application',
+    label: 'DMT Application',
+    icon: '📋',
+    val: 28,
+    description: 'Submit Form A, medical cert, NIC copy & photos to DMT.',
+    hint: 'Application fee: Rs. 1,500. Bring originals for verification.',
+  },
+  {
+    key: 'theory',
+    label: 'Theory Exam',
+    icon: '📝',
+    val: 43,
+    description: 'Written test at your DMT district office — 30 MCQ, 45 min.',
+    hint: 'Pass mark: 23/30. Book your slot via DMT e-services.',
+  },
+  {
+    key: 'permit',
+    label: "
+<truncated 45214 bytes>
+ground: '#c2410c', color: '#fff', fontSize: '12px', fontWeight: 700, border: 'none', cursor: 'pointer', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Call School
+                  </button>
+                  <button style={{ padding: '10px', background: 'transparent', color: '#d6d3d1', fontSize: '12px', fontWeight: 700, border: '1px solid #44403c', cursor: 'pointer', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    WhatsApp Admin
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
+// ─── Header ───────────────────────────────────────────────────────────────────
+function Header({ onLogout, name, activeTab, setActiveTab }) {
+  return (
+    <header style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, background: '#fff', borderBottom: '1px solid #e8e0d8' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 24px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontWeight: 900, fontSize: '15px', color: '#1c1917', letterSpacing: '-0.02em' }}>
+          ERANGA <span style={{ color: '#c2410c' }}>DRIVING</span> SCHOOL
+        </span>
+        <nav style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+          {['Dashboard', 'Lessons', 'Payments', 'Schedule'].map((item) => (
+            <button key={item} onClick={() => setActiveTab(item.toLowerCase())} style={{ background: 'none', border: 'none', fontSize: '12px', fontWeight: 700, cursor: 'pointer', color: activeTab === item.toLowerCase() ? '#c2410c' : '#78716c', letterSpacing: '0.06em', textTr
+<truncated 5967 bytes>
+
+NOTE: The output was truncated because it was too long. Use a more targeted query or a smaller range to get the information you need.

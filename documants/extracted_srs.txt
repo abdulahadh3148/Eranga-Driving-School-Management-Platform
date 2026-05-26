@@ -1,0 +1,495 @@
+
+
+
+
+
+SRI LANKA INSTITUTE OF ADVANCED TECHNOLOGICAL EDUCATION
+Higher National Diploma in Information Technology
+
+
+HNDIT 4052
+Programming Individual Project
+
+
+Eranga Driving School
+Management Platform
+
+
+Supervisor:
+Ms.K.G.D.De.A Wijesinghe
+
+
+
+M.F Abdul Ahadh                                                      ACADEMIC YEAR: 2324
+KUR/IT/2324/F/0083                                                 YEAR II, SEMESTER II
+
+
+Table of Contents
+
+1. INTRODUCTION4
+1.1 Purpose of this Document4
+1.2 Scope of the System4
+1.3 Definitions and Acronyms5
+1.4 System Overview5
+2. GENERAL DESCRIPTION6
+2.1 Product Perspective6
+2.2 Product Functions6
+2.3 User Classes and Characteristics7
+2.3.1 Administrator (Hall Manager)7
+2.3.2 Customer7
+2.4 Features and Benefits8
+2.5 Assumptions and Dependencies8
+3. FUNCTIONAL REQUIREMENTS9
+3.1 User Authentication9
+3.2 Hall Management9
+3.3 Booking Management9
+3.4 Package and Service Management10
+3.5 Payment Management10
+3.6 Notification System10
+3.7 Reporting and Analytics11
+3.8 User Role Management11
+4. INTERFACE REQUIREMENTS12
+4.1 User Interface12
+4.2 Software Interface12
+4.3 Communication Interface12
+5. DESIGN CONSTRAINTS13
+6. NON-FUNCTIONAL REQUIREMENTS14
+6.1 Performance14
+6.2 Security14
+6.3 Reliability14
+6.4 Usability14
+6.5 Scalability14
+6.6 Maintainability15
+7. APPENDICES16
+7.1 Assumptions16
+7.2 Dependencies16
+7.3 Acronyms16
+7.4 References17
+8. Use Case Diagram18
+8. Entity Relationship Diagram19
+9. Class Diagram20
+
+
+
+
+
+
+
+
+
+
+
+
+
+1. INTRODUCTION
+1.1 Purpose of this Document
+This Software Requirements Specification (SRS) document provides a detailed description of the Hall Booking and Management System developed for Camilla Banquet Hall. The purpose of this document is to define the functional and non-functional requirements of the proposed system clearly and systematically.
+This document acts as a formal agreement between the client, developer, and academic supervisor by explaining the expected behaviour, features, constraints, and operational flow of the system. It also serves as a guideline during the system design, implementation, testing, deployment, and maintenance phases of the Software Development Life Cycle (SDLC).
+The document follows standard software engineering practices and is prepared for academic and development purposes.
+
+1.2 Scope of the System
+The Hall Booking and Management System is a web-based application developed to automate and simplify the hall reservation process for small and medium-scale event halls in Sri Lanka.
+The system provides functionalities for:
+Real-time hall booking and availability checking 
+Customer registration and booking requests 
+Package and additional service management 
+Payment tracking and sandbox payment simulation 
+Automated notifications and reminders 
+Revenue and booking report generation 
+Admin and customer role management 
+The system is specifically designed for banquet halls such as weddings, receptions, birthday parties, and corporate functions.
+The project focuses on improving operational efficiency, reducing manual workload, and enhancing customer experience through digital transformation.
+
+1.3 Definitions and Acronyms
+Acronym
+Meaning
+SRS
+Software Requirements Specification
+UI
+User Interface
+API
+Application Programming Interface
+REST
+Representational State Transfer
+CRUD
+Create, Read, Update, Delete
+OTP
+One Time Password
+Firebase
+Google Cloud Backend Platform
+HTTPS
+Hypertext Transfer Protocol Secure
+DB
+Database
+SDLC
+Software Development Life Cycle
+
+1.4 System Overview
+The Hall Booking and Management System is designed as a centralized digital platform that replaces manual booking methods such as notebooks, spreadsheets, and phone-based reservation tracking.
+The system allows customers to view hall details, check availability, submit bookings, and make advance payments through a sandbox payment environment. Administrators can manage bookings, approve reservations, monitor payments, configure packages and services, and generate business reports.
+The application uses modern web technologies including React.js, Node.js, Firebase Firestore, and Firebase Authentication to provide a responsive, secure, and scalable environment.
+
+2. GENERAL DESCRIPTION
+2.1 Product Perspective
+The Hall Booking and Management System is a standalone web application that integrates hall reservations, payment tracking, notifications, reporting, and customer management into one centralized system.
+The system replaces traditional paper-based management processes with a modern digital solution that improves data organization and operational efficiency.
+The system consists of two major user groups:
+Admin (Hall Manager)
+The administrator has full access to the system. Admin users can manage hall details, packages, bookings, reports, payments, notifications, and customer information.
+Customer
+Customers can browse available halls, submit booking requests, select packages and services, make advance payments, and monitor booking status updates.
+
+2.2 Product Functions
+The major functions of the system are described below:
+1. User Authentication
+The system provides secure login and registration facilities for both administrators and customers using Firebase Authentication.
+2. Hall Management
+Administrators can add, update, delete, and manage hall information including hall name, capacity, pricing, and availability.
+3. Booking Management
+Customers can submit hall booking requests while the system validates hall availability and prevents double bookings.
+4. Package and Service Management
+Administrators can create packages such as Silver, Gold, and Platinum and configure additional services including catering, decorations, DJ services, photography, and overtime charges.
+5. Payment Management
+The system tracks advance payments and remaining balances using a sandbox payment simulation environment.
+6. Notification System
+Customers receive booking confirmations, payment reminders, and event reminders through system alerts and email notifications.
+7. Reporting System
+Administrators can generate reports such as monthly revenue reports, booking statistics, payment summaries, and hall utilization reports.
+
+2.3 User Classes and Characteristics
+2.3.1 Administrator (Hall Manager)
+The administrator is responsible for managing the entire system. The admin user is expected to have basic technical knowledge and understanding of booking management operations.
+Admin users perform activities such as:
+Managing halls and packages 
+Monitoring bookings and payments 
+Generating reports 
+Updating availability schedules 
+Approving or rejecting booking requests 
+
+2.3.2 Customer
+Customers are users who wish to reserve halls for events such as weddings or receptions. Customers are expected to have basic computer and internet literacy.
+Customers can:
+Register and login 
+View hall details and availability 
+Submit booking requests 
+Select packages and additional services 
+Make advance payments 
+Receive notifications and reminders 
+
+2.4 Features and Benefits
+The proposed system provides several important benefits:
+Centralized digital booking management 
+Real-time availability checking 
+Prevention of double bookings 
+Automated payment tracking 
+Flexible package and service selection 
+Secure and organized customer data management 
+Automated notifications and reminders 
+Dynamic revenue and booking reports 
+Improved customer satisfaction and operational efficiency 
+
+2.5 Assumptions and Dependencies
+The system assumes that:
+Users have internet connectivity 
+Firebase cloud services remain operational 
+Administrators regularly update hall and package information 
+Customers provide accurate booking details 
+The system depends on:
+Firebase Authentication 
+Firebase Firestore Database 
+PayHere Sandbox payment environment 
+React.js and Node.js runtime environment 
+
+
+
+3. FUNCTIONAL REQUIREMENTS
+3.1 User Authentication
+The system shall provide secure user authentication features.
+Functional Requirements:
+Users shall register using email and password 
+Users shall login securely using Firebase Authentication 
+The system shall support role-based access control 
+Invalid login attempts shall display error messages 
+Passwords shall remain encrypted and secure 
+
+3.2 Hall Management
+The administrator shall manage hall information through the admin dashboard.
+Functional Requirements:
+Add new halls 
+Update hall information 
+Delete existing halls 
+Manage hall pricing and capacity 
+Upload hall images and descriptions 
+View hall booking schedules 
+
+3.3 Booking Management
+The system shall provide booking management functionalities for both customers and administrators.
+Functional Requirements:
+Customers can submit booking requests 
+The system shall validate date availability 
+The system shall prevent double bookings 
+Booking statuses shall include: 
+Pending 
+Approved 
+Confirmed 
+Completed 
+Cancelled 
+Administrators can approve or reject bookings 
+
+3.4 Package and Service Management
+The system shall support package-based and service-based pricing models.
+Functional Requirements:
+Administrators can create packages such as Silver, Gold, and Platinum 
+Each package shall contain different services and pricing 
+Customers may optionally choose packages during booking 
+Additional services such as catering, decoration, photography, DJ, and overtime can be added separately 
+The system shall dynamically calculate pricing based on selected services and guest count 
+
+3.5 Payment Management
+The system shall provide payment tracking functionality.
+Functional Requirements:
+Customers can make advance payments 
+The system shall calculate remaining balances automatically 
+Payment status shall update after successful transactions 
+Sandbox payment integration shall be used for demonstration purposes 
+The system shall maintain payment history records 
+Receipts and transaction details shall be stored securely 
+
+3.6 Notification System
+The system shall provide automated notifications to improve communication.
+Functional Requirements:
+Booking confirmation notifications 
+Payment due reminders 
+Event reminder notifications 
+Notification dismiss and delete functionality 
+Email and system alert support 
+
+3.7 Reporting and Analytics
+The administrator shall have access to dynamic business reports and analytics.
+Functional Requirements:
+Monthly revenue reports 
+Weekly booking summaries 
+Pending payment reports 
+Hall utilization statistics 
+Booking trend charts 
+Dynamic dashboard analytics 
+
+3.8 User Role Management
+The system shall implement role-based access control.
+Functional Requirements:
+Admin users shall have full system access 
+Customers shall have limited access 
+Unauthorized users shall be restricted from admin features 
+Firestore security rules shall enforce data protection 
+
+
+
+
+
+
+4. INTERFACE REQUIREMENTS
+4.1 User Interface
+The system shall provide a modern, responsive, and user-friendly interface.
+User Interface Features:
+Responsive design for desktop, tablet, and mobile devices 
+Luxury-themed UI design using emerald green and gold colors 
+Separate dashboards for customers and administrators 
+Interactive booking calendar 
+Responsive mobile card layouts 
+Toast notifications and alerts 
+
+4.2 Software Interface
+The system integrates several technologies and services.
+Technology
+Purpose
+React.js
+Frontend development
+Node.js + Express.js
+Backend API development
+Firebase Firestore
+Database management
+Firebase Authentication
+User authentication
+PayHere Sandbox
+Payment simulation
+Recharts
+Analytics and data visualization
+
+4.3 Communication Interface
+The system uses secure communication protocols.
+Communication Requirements:
+HTTPS protocol shall be used for secure communication 
+JSON format shall be used for API communication 
+Firebase cloud services shall handle real-time database communication 
+
+5. DESIGN CONSTRAINTS
+The following design constraints apply to the system:
+The application must be web-based only 
+React.js and Firebase must be used 
+The system must support modern web browsers 
+The system shall follow responsive web design principles 
+GitHub shall be used for version control 
+Secure coding standards shall be followed 
+The project shall remain suitable for small and medium-scale hall businesses 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+6. NON-FUNCTIONAL REQUIREMENTS
+6.1 Performance
+System response time shall remain below 3 seconds 
+Calendar availability shall load within 1 second 
+The system shall support multiple concurrent users 
+
+6.2 Security
+User passwords shall remain encrypted 
+Role-based access control shall be enforced 
+Firestore security rules shall protect customer data 
+The system shall prevent unauthorized access and injection attacks 
+
+6.3 Reliability
+The system shall maintain data consistency 
+Booking and payment records shall remain accurate 
+Cloud database backups shall ensure data safety 
+
+6.4 Usability
+The interface shall be simple and easy to use 
+Clear error messages and validation feedback shall be displayed 
+The system shall support non-technical users 
+
+6.5 Scalability
+The system architecture shall support future expansion 
+Additional halls and services can be added easily 
+Future mobile application integration shall be possible 
+
+6.6 Maintainability
+The project shall use modular code organization 
+Components and services shall be reusable 
+Documentation shall be maintained properly 
+Future updates and debugging shall be manageable 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+7. APPENDICES
+7.1 Assumptions
+Users have internet access 
+Administrators regularly update booking data 
+Firebase services remain operational 
+
+7.2 Dependencies
+Firebase Authentication 
+Firebase Firestore 
+PayHere Sandbox API 
+Node.js Environment 
+React.js Framework 
+
+7.3 Acronyms
+Acronym
+Meaning
+API
+Application Programming Interface
+UI
+User Interface
+DB
+Database
+SRS
+Software Requirements Specification
+HTTPS
+Hypertext Transfer Protocol Secure
+CRUD
+Create Read Update Delete
+
+
+7.4 References
+IEEE Std 830-1998 – Software Requirements Specification 
+React Documentation – https://react.dev 
+Firebase Documentation – https://firebase.google.com/docs 
+Node.js Documentation – https://nodejs.org/docs 
+Recharts Documentation – https://recharts.org 
+Sommerville, I. (2016), Software Engineering 
+Pressman, R.S. (2014), Software Engineering: A Practitioner’s Approach
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+8. Use Case Diagram
+
+
+
+
+
+
+8. Entity Relationship Diagram
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+9. Class Diagram
+
