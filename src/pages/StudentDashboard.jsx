@@ -1,12 +1,18 @@
-import { useState, useEffect } from "react";
+/* eslint-disable no-unused-vars */
+import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase/config";
 import {
-  collection, query, where, onSnapshot, addDoc, doc, updateDoc, getDoc, getDocs, orderBy
+  collection, query, where, onSnapshot, addDoc, doc, updateDoc, getDocs
 } from "firebase/firestore";
 import { storage } from "../firebase/config";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getMockTest, ROAD_SIGNS } from "../utils/mockTestData";
+import LearnerProgressDashboard from "../components/LearnerProgressDashboard";
+import SetupWizard from "./student/SetupWizard";
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 // ── DMT Steps ─────────────────────────────────────────────────────────────────
 const DMT_STEPS = [
@@ -38,12 +44,12 @@ const VEHICLE_LABELS = {
 };
 
 const SKILLS_DEFAULT = [
-  { name: "Vehicle Control", level: 0 },
-  { name: "Lane Discipline", level: 0 },
-  { name: "Observation / Mirrors", level: 0 },
-  { name: "Clutch & Gear Work", level: 0 },
-  { name: "Parking", level: 0 },
-  { name: "Emergency Stop", level: 0 },
+  { name: "Clutch Control", level: 0 },
+  { name: "Gear Control", level: 0 },
+  { name: "Reverse", level: 0 },
+  { name: "Road Rules", level: 0 },
+  { name: "Stopping", level: 0 },
+  { name: "Bike 8", level: 0 },
 ];
 
 const TIME_SLOTS = [
@@ -77,6 +83,7 @@ const NAV_LINKS = [
   { label: "Book Session",    path: "/student/book",           icon: "＋" },
   { label: "My Bookings",     path: "/student/bookings",       icon: "◷" },
   { label: "Make Payment",    path: "/student/payment",        icon: "◎" },
+  { label: "Mock Test",       path: "/student/mock-test",      icon: "✍" },
   { label: "Progress",        path: "/student/progress",       icon: "▲" },
   { label: "Notifications",   path: "/student/notifications",  icon: "◌" },
 ];
@@ -88,6 +95,7 @@ function pathToLabel(pathname) {
   if (pathname.startsWith("/student/enroll") || pathname.startsWith("/student/packages")) return "Book Session";
   if (pathname.startsWith("/student/payment-history")) return "Make Payment";
   if (pathname.startsWith("/student/edit-profile")) return "My Profile";
+  if (pathname.startsWith("/student/mock-test")) return "Mock Test";
   return "Dashboard";
 }
 
@@ -96,7 +104,7 @@ function pathToLabel(pathname) {
 // STYLES
 // ═════════════════════════════════════════════════════════════════════════════
 const css = {
-  root: { display: "flex", minHeight: "100vh", background: "#F1F4F9", fontFamily: "'DM Sans','Helvetica Neue',sans-serif", color: "#111c2d" },
+  root: { display: "flex", minHeight: "100vh", background: "#F1F4F9", fontFamily: "var(--font-body)", color: "#111c2d" },
   sidebar: { width: 220, background: "#f0f3ff", borderRight: "1px solid #dee2e6", display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 200, transition: "transform 0.25s ease" },
   sidebarLogo: { display: "flex", alignItems: "center", gap: 12, padding: "24px 20px 20px", borderBottom: "1px solid #dee2e6" },
   logoMark: { width: 36, height: 36, background: "#0B2545", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 18, color: "#ffffff", flexShrink: 0 },
@@ -148,7 +156,6 @@ const css = {
 };
 
 const GLOBAL_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800;900&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #F1F4F9; }
   ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -195,12 +202,24 @@ export default function StudentDashboard() {
   const [packages, setPackages] = useState([]);
   const [instructors, setInstructors] = useState([]);
   const [skills, setSkills] = useState(SKILLS_DEFAULT);
+  const [mockResults, setMockResults] = useState([]);
+  const [studentSchedules, setStudentSchedules] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => { setTimeout(() => setMounted(true), 60); }, []);
 
+  const displayPackages = packages.length > 0 ? packages : FALLBACK_PACKAGES;
+  const totalPaid = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + Number(p.amount), 0);
+  
+  // Calculate outstanding fees based on total_price saved during setup
+  const totalCourseFee = userProfile?.total_price || 0;
+  const calculatedOutstandingFees = userProfile?.setup_completed 
+    ? Math.max(0, totalCourseFee - totalPaid) 
+    : (userProfile?.outstandingFees || 0);
+
   // ── Build user object from auth profile ──
   const user = {
+    id: userProfile?.id || "",
     name: userProfile?.name || currentUser?.displayName || "Student",
     email: userProfile?.email || currentUser?.email || "",
     nic: userProfile?.nic || "",
@@ -217,7 +236,7 @@ export default function StudentDashboard() {
     classesCompleted: userProfile?.classesCompleted || 0,
     classesTotal: userProfile?.classesTotal || 14,
     lessonsScheduled: userProfile?.lessonsScheduled || 0,
-    outstandingFees: userProfile?.outstandingFees || 0,
+    outstandingFees: calculatedOutstandingFees,
     currentStep: userProfile?.currentStep || "medical",
     hasSubmittedApplication: userProfile?.hasSubmittedApplication || false,
     status: userProfile?.status || "pending",
@@ -230,13 +249,22 @@ export default function StudentDashboard() {
     if (!currentUser?.uid) return;
     const unsubs = [];
     let loadCounter = 0;
-    const checkDone = () => { loadCounter++; if (loadCounter >= 4) setDataLoading(false); };
+    const checkDone = () => { loadCounter++; if (loadCounter >= 6) setDataLoading(false); };
 
-    // Bookings
+    // Sessions (formerly bookings)
     try {
-      const bQ = query(collection(db, "bookings"), where("studentId", "==", currentUser.uid));
+      const bQ = query(collection(db, "sessions"), where("studentId", "==", currentUser.uid));
       unsubs.push(onSnapshot(bQ, snap => {
         setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        checkDone();
+      }, () => checkDone()));
+    } catch { checkDone(); }
+
+    // Auto-generated student schedules
+    try {
+      const schQ = query(collection(db, "student_schedules"), where("studentId", "==", currentUser.uid));
+      unsubs.push(onSnapshot(schQ, snap => {
+        setStudentSchedules(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         checkDone();
       }, () => checkDone()));
     } catch { checkDone(); }
@@ -268,17 +296,29 @@ export default function StudentDashboard() {
       }, () => checkDone()));
     } catch { checkDone(); }
 
+    // Mock Test Results
+    try {
+      const mrQ = query(collection(db, "mock_test_results"), where("studentId", "==", currentUser.uid));
+      unsubs.push(onSnapshot(mrQ, snap => {
+        setMockResults(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        checkDone();
+      }, () => checkDone()));
+    } catch { checkDone(); }
+
     // Instructors (one-time)
     (async () => {
       try {
         const iQ = query(collection(db, "users"), where("role", "==", "instructor"));
         const snap = await getDocs(iQ);
         setInstructors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch {}
+      } catch (e) {
+        console.error("Failed to load instructors", e);
+      }
     })();
 
     // Skills (if stored)
     if (userProfile?.skills) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSkills(userProfile.skills);
     }
 
@@ -287,22 +327,26 @@ export default function StudentDashboard() {
 
   // ── Derived data ──
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const allBookings = bookings.sort((a, b) => new Date(a.date) - new Date(b.date));
-  const upcoming = allBookings.filter(b => new Date(b.date) >= today && b.status !== "completed").sort((a, b) => new Date(a.date) - new Date(b.date));
-  const past = allBookings.filter(b => new Date(b.date) < today || b.status === "completed").sort((a, b) => new Date(b.date) - new Date(a.date));
-  const progress = user.progress;
+  const allBookingsData = [...bookings, ...studentSchedules];
+  const allBookings = allBookingsData.sort((a, b) => new Date(a?.date || 0) - new Date(b?.date || 0));
+  const upcoming = allBookings.filter(b => new Date(b?.date || 0) >= today && b?.status !== "completed").sort((a, b) => new Date(a?.date || 0) - new Date(b?.date || 0));
+  const past = allBookings.filter(b => new Date(b?.date || 0) < today || b?.status === "completed").sort((a, b) => new Date(b?.date || 0) - new Date(a?.date || 0));
+  const progress = user?.progress || 0;
   const currentStep = DMT_STEPS.find(s => progress < s.val) || DMT_STEPS[DMT_STEPS.length - 1];
   const nextStep = DMT_STEPS[DMT_STEPS.indexOf(currentStep) + 1] || null;
-  const displayPackages = packages.length > 0 ? packages : FALLBACK_PACKAGES;
 
   const handleLogout = async () => {
-    try { await logout(); navigate("/login"); } catch (err) { console.error(err); }
+    try { await logout(); navigate("/login", { replace: true }); } catch (err) { console.error(err); }
   };
 
   const goTo = (path) => {
     navigate(path);
     setSidebarOpen(false);
   };
+
+  if (userProfile && userProfile.setup_completed === false) {
+    return <SetupWizard />;
+  }
 
   return (
     <div style={css.root}>
@@ -377,23 +421,28 @@ export default function StudentDashboard() {
             {activePage === "Dashboard" && (
               <DashboardPage
                 user={user}
+                userProfile={userProfile}
                 upcoming={upcoming}
                 past={past}
                 currentStep={currentStep}
                 nextStep={nextStep}
                 goTo={goTo}
                 skills={skills}
+                mockResults={mockResults}
               />
             )}
-            {activePage === "My Profile" && <ProfilePage user={user} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} goTo={goTo} />}
+            {activePage === "My Profile" && <ProfilePage user={user} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} goTo={goTo} packages={displayPackages} totalPaid={totalPaid} />}
             {activePage === "Book Session" && (
-              <BookSessionPage packages={displayPackages} user={user} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} instructors={instructors} goTo={goTo} />
+              <BookSessionPage packages={displayPackages} user={user} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} instructors={instructors} goTo={goTo} totalPaid={totalPaid} />
             )}
             {activePage === "My Bookings" && <BookingsPage upcoming={upcoming} past={past} instructors={instructors} />}
             {activePage === "Make Payment" && (
               <MakePaymentPage payments={payments} user={user} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} goTo={goTo} />
             )}
-            {activePage === "Progress" && <ProgressPage user={user} past={past} skills={skills} />}
+            {activePage === "Mock Test" && (
+              <MockTestPage currentUser={currentUser} mockResults={mockResults} />
+            )}
+            {activePage === "Progress" && <LearnerProgressDashboard user={user} past={past} mockResults={mockResults} goTo={goTo} />}
             {activePage === "Notifications" && <NotificationsPage notifications={notifications} />}
           </div>
         </main>
@@ -406,201 +455,444 @@ export default function StudentDashboard() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// DASHBOARD PAGE
+// DASHBOARD PAGE — STEP-BY-STEP JOURNEY
 // ═════════════════════════════════════════════════════════════════════════════
-function DashboardPage({ user, upcoming, past, currentStep, nextStep, goTo, skills }) {
-  const progress = user.progress;
+function DashboardPage({ user, userProfile, upcoming, past, goTo, skills, mockResults }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState('');
+
+  const handleMedicalUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadError('');
+    setUploadSuccess('');
+
+    // Validation
+    const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    if (!validTypes.includes(file.type)) {
+      setUploadError("Invalid file format. Please upload PDF, JPG, or PNG.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setUploadError("File size exceeds 2MB limit.");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const storageRef = ref(storage, `medical/${user.id}_${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadUrl = await getDownloadURL(snapshot.ref);
+
+      // Write to student_medical collection
+      await addDoc(collection(db, "student_medical"), {
+        student_id: user.id,
+        file_url: downloadUrl,
+        status: 'uploaded',
+        uploaded_at: new Date().toISOString()
+      });
+
+      // Update user profile
+      await updateDoc(doc(db, "users", user.id), {
+        medical_status: 'uploaded',
+        medical_url: downloadUrl
+      });
+
+      setUploadSuccess("Medical certificate uploaded successfully.");
+    } catch (err) {
+      console.error("Upload error:", err);
+      setUploadError("Failed to upload document. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Step Status Computation ──
+  const medicalRaw = userProfile?.medical_status || 'not_started';
+  const medicalDone = medicalRaw === 'approved';
+  const medicalUploaded = medicalRaw === 'uploaded' || medicalRaw === 'pending';
+
+  const permitRaw = medicalDone ? (userProfile?.permit_status || 'not_started') : 'locked';
+  const permitDone = permitRaw === 'approved';
+
+  const totalClasses = user.classesTotal || 14;
+  const completedClasses = user.classesCompleted || 0;
+  const practiceRaw = permitDone ? (completedClasses >= totalClasses ? 'completed' : (completedClasses > 0 ? 'in_progress' : 'not_started')) : 'locked';
+  const practiceDone = practiceRaw === 'completed';
+
+  const totalFee = userProfile?.total_price || 0;
+  const approvedPayments = 0; // from payments prop — handled in parent
+  const paymentDone = totalFee > 0 && user.outstandingFees <= 0;
+
+  const trialRaw = (practiceDone && paymentDone) ? (userProfile?.trial_status || 'not_started') : 'locked';
+  const trialDone = trialRaw === 'completed';
+
+  // Step objects
+  const STEPS = [
+    { key: 'medical',  label: 'Medical Certificate', icon: '🏥', status: medicalDone ? 'completed' : medicalUploaded ? 'in_progress' : 'not_started' },
+    { key: 'permit',   label: 'L Permit',             icon: '🪪', status: permitDone ? 'completed' : permitRaw === 'uploaded' ? 'in_progress' : permitRaw },
+    { key: 'practice', label: 'Driving Practice',      icon: '🚗', status: practiceRaw },
+    { key: 'trial',    label: 'Trial Exam',            icon: '🏆', status: trialDone ? 'completed' : trialRaw },
+  ];
+
+  const completedSteps = STEPS.filter(s => s.status === 'completed').length;
+  const journeyPct = Math.round((completedSteps / STEPS.length) * 100);
+
+  const statusBadge = (status) => {
+    const map = {
+      completed:   { bg: '#ecfdf5', color: '#065f46', border: '#a7f3d0', label: '✓ Completed' },
+      in_progress: { bg: '#eff6ff', color: '#1e40af', border: '#bfdbfe', label: '● In Progress' },
+      not_started: { bg: '#f9fafb', color: '#6b7280', border: '#e5e7eb', label: '○ Not Started' },
+      locked:      { bg: '#f3f4f6', color: '#9ca3af', border: '#e5e7eb', label: '🔒 Locked' },
+    };
+    const s = map[status] || map.locked;
+    return (
+      <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', padding: '4px 12px', background: s.bg, color: s.color, border: `1px solid ${s.border}`, borderRadius: 4, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+        {s.label}
+      </span>
+    );
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {/* Welcome strip */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* ── Welcome Strip ── */}
       <div style={css.welcomeStrip}>
         <div>
-          <div style={css.eyebrow}>Student Portal · {new Date().toLocaleDateString("en-LK", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>
-          <h1 style={css.welcomeTitle}>Welcome back, {user.name.split(" ")[0]}. 👋</h1>
-          <p style={css.welcomeSub}>{user.enrolledPackage} Package · {LICENSE_LABELS[user.licenseType] || user.licenseType} · DMT: {user.dmtOffice}</p>
+          <div style={css.eyebrow}>Student Portal · {new Date().toLocaleDateString('en-LK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+          <h1 style={css.welcomeTitle}>Welcome back, {user.name.split(' ')[0]}. 👋</h1>
+          <p style={css.welcomeSub}>
+            <span style={{ fontWeight: 800, color: '#0B2545' }}>ID: {user.id || 'Pending'}</span> · {user.enrolledPackage || 'No Package'}
+          </p>
         </div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <ActionBtn onClick={() => goTo("/student/book")} accent>+ Book Session</ActionBtn>
-          <ActionBtn onClick={() => goTo("/student/progress")}>View Progress</ActionBtn>
-        </div>
-      </div>
-
-      {/* Current step alert */}
-      <div style={css.stepAlert}>
-        <span style={{ fontSize: 28 }}>{currentStep.icon}</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", color: "#0B2545", textTransform: "uppercase", marginBottom: 4 }}>
-            Current DMT Step
-          </div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: "#111c2d", marginBottom: 4 }}>{currentStep.label}</div>
-          <div style={{ fontSize: 12, color: "#505f76" }}>{currentStep.hint}</div>
-          {nextStep && (
-            <div style={{ fontSize: 11, color: "#737686", marginTop: 6 }}>
-              Next → <strong style={{ color: "#505f76" }}>{nextStep.label}</strong>
-            </div>
-          )}
-        </div>
-        <div style={css.progressCircle}>
-          <svg width="64" height="64" viewBox="0 0 64 64">
-            <circle cx="32" cy="32" r="26" fill="none" stroke="#dee2e6" strokeWidth="5" />
-            <circle cx="32" cy="32" r="26" fill="none" stroke="#0B2545" strokeWidth="5"
-              strokeDasharray={`${2 * Math.PI * 26}`}
-              strokeDashoffset={`${2 * Math.PI * 26 * (1 - progress / 100)}`}
-              strokeLinecap="round"
-              transform="rotate(-90 32 32)"
-              style={{ transition: "stroke-dashoffset 1s ease" }}
-            />
-          </svg>
-          <div style={css.progressCircleLabel}>{progress}%</div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <ActionBtn onClick={() => goTo('/student/payment')} accent>◎ Make Payment</ActionBtn>
+          <ActionBtn onClick={() => goTo('/student/progress')}>View Progress</ActionBtn>
         </div>
       </div>
 
-      {/* Stats row */}
-      <div style={css.statsGrid}>
-        <StatCard icon="🎓" label="Classes Done" value={`${user.classesCompleted}/${user.classesTotal}`} sub={`${user.classesTotal - user.classesCompleted} remaining`} />
-        <StatCard icon="📅" label="Next Lesson" value={upcoming[0] ? `${fmtDate(upcoming[0].date).day} ${fmtDate(upcoming[0].date).month}` : "None"} sub={upcoming[0]?.timeSlot || "Book now"} accent={!!upcoming[0]} />
-        <StatCard icon="💳" label="Outstanding" value={fmtLKR(user.outstandingFees)} sub="Contact admin" warn={user.outstandingFees > 0} />
-        <StatCard icon="📊" label="Progress" value={`${progress}%`} sub={currentStep.label} />
-      </div>
-
-      {/* DMT Progress Tracker */}
+      {/* ── Overall Progress Bar ── */}
       <div style={css.card}>
-        <SectionHeader title="DMT License Progress Tracker" sub="Department of Motor Traffic — Sri Lanka Official Flow" />
-        <div style={{ overflowX: "auto", paddingBottom: 8 }}>
-          <div style={{ display: "flex", gap: 0, minWidth: 560, position: "relative", marginTop: 24 }}>
-            <div style={{ position: "absolute", top: 20, left: "7%", right: "7%", height: 2, background: "#dee2e6", zIndex: 0 }} />
-            <div style={{ position: "absolute", top: 20, left: "7%", width: `${Math.min(progress, 99)}%`, height: 2, background: "#0B2545", zIndex: 1, transition: "width 1s ease" }} />
-            {DMT_STEPS.map((step) => {
-              const done = progress >= step.val;
-              const active = !done && progress >= step.val - 14;
-              return (
-                <div key={step.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, position: "relative", zIndex: 2 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#111c2d' }}>Your Journey</div>
+            <div style={{ fontSize: 12, color: '#737686', marginTop: 2 }}>{completedSteps} of {STEPS.length} steps completed</div>
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: '#0B2545' }}>{journeyPct}%</div>
+        </div>
+        <div style={{ height: 8, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${journeyPct}%`, background: 'linear-gradient(90deg, #0B2545, #2563eb)', borderRadius: 99, transition: 'width 1s ease' }} />
+        </div>
+      </div>
+
+      {/* ── 2-Column Layout ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,3fr) minmax(0,2fr)', gap: 20, alignItems: 'start' }}>
+
+        {/* ═══ LEFT COLUMN — Step Timeline ═══ */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {STEPS.map((step, idx) => {
+            const isLocked = step.status === 'locked';
+            const isDone = step.status === 'completed';
+            const isActive = step.status === 'in_progress' || step.status === 'not_started';
+            const isLast = idx === STEPS.length - 1;
+
+            return (
+              <div key={step.key} style={{ display: 'flex', gap: 0 }}>
+                {/* Timeline Column */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 48, flexShrink: 0 }}>
                   <div style={{
-                    width: 40, height: 40, borderRadius: "50%",
-                    background: done ? "#16a34a" : active ? "#16335a" : "#dee2e6",
-                    border: `2px solid ${done ? "#16a34a" : active ? "#0B2545" : "#dee2e6"}`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: done ? 14 : 16,
-                    boxShadow: active ? "0 0 0 4px rgba(11,37,69,0.2)" : "none",
-                    transition: "all 0.4s",
+                    width: 40, height: 40, borderRadius: '50%',
+                    background: isDone ? '#16a34a' : isActive ? '#0B2545' : '#d1d5db',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: isDone ? 16 : 18, color: '#fff',
+                    boxShadow: isActive ? '0 0 0 4px rgba(11,37,69,0.12)' : 'none',
+                    transition: 'all 0.3s', flexShrink: 0
                   }}>
-                    {done ? "✓" : step.icon}
+                    {isDone ? '✓' : step.icon}
                   </div>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: done ? "#16a34a" : active ? "#0B2545" : "#737686", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", lineHeight: 1.3, maxWidth: 64 }}>
-                    {step.label}
+                  {!isLast && (
+                    <div style={{ width: 2, flex: 1, minHeight: 20, background: isDone ? '#16a34a' : '#d1d5db', transition: 'background 0.3s' }} />
+                  )}
+                </div>
+
+                {/* Step Card */}
+                <div style={{
+                  flex: 1, background: isLocked ? '#f9fafb' : '#fff', border: `1px solid ${isDone ? '#a7f3d0' : isActive ? '#bfdbfe' : '#e5e7eb'}`,
+                  borderRadius: 12, padding: '20px 24px', marginBottom: isLast ? 0 : 16,
+                  opacity: isLocked ? 0.6 : 1, transition: 'all 0.3s'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: isLocked ? '#9ca3af' : '#111c2d' }}>
+                      Step {idx + 1}: {step.label}
+                    </div>
+                    {statusBadge(step.status)}
                   </div>
+
+                  {/* ── Step 1: Medical ── */}
+                  {step.key === 'medical' && (
+                    <div style={{ marginTop: 12 }}>
+                      {uploadError && <div style={{ padding: '10px', background: '#fef2f2', border: '1px solid #f87171', color: '#b91c1c', borderRadius: 6, fontSize: 12, marginBottom: 10 }}>{uploadError}</div>}
+                      {uploadSuccess && <div style={{ padding: '10px', background: '#f0fdf4', border: '1px solid #4ade80', color: '#15803d', borderRadius: 6, fontSize: 12, marginBottom: 10 }}>{uploadSuccess}</div>}
+
+                      {medicalDone ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8 }}>
+                          <span style={{ fontSize: 24 }}>✅</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#065f46' }}>Medical certificate approved</div>
+                            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>You can proceed to the next step</div>
+                          </div>
+                          {userProfile?.medical_url && (
+                            <a href={userProfile.medical_url} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 12px', background: '#fff', border: '1px solid #a7f3d0', borderRadius: 6, fontSize: 11, fontWeight: 700, color: '#065f46', textDecoration: 'none' }}>View File</a>
+                          )}
+                        </div>
+                      ) : medicalUploaded ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8 }}>
+                          <span style={{ fontSize: 24 }}>📄</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#1e40af' }}>Document uploaded — awaiting admin approval</div>
+                            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>We will verify your document shortly</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            {userProfile?.medical_url && (
+                              <a href={userProfile.medical_url} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 12px', background: '#fff', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: 11, fontWeight: 700, color: '#1e40af', textDecoration: 'none' }}>View</a>
+                            )}
+                            <label style={{ cursor: uploading ? 'not-allowed' : 'pointer', padding: '6px 12px', background: '#1e40af', border: '1px solid #1e40af', borderRadius: 6, fontSize: 11, fontWeight: 700, color: '#fff', opacity: uploading ? 0.7 : 1 }}>
+                              {uploading ? 'Uploading...' : 'Re-upload'}
+                              <input type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={handleMedicalUpload} disabled={uploading} />
+                            </label>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ padding: '16px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+                          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                            <span style={{ fontSize: 24 }}>🏥</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: '#111c2d' }}>Upload Medical Certificate</div>
+                              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Please upload a valid Form B medical certificate issued by an RMV registered doctor.</div>
+                              <ul style={{ fontSize: 11, color: '#9ca3af', marginTop: 6, paddingLeft: 16 }}>
+                                <li>Accepted formats: PDF, JPG, PNG</li>
+                                <li>Maximum file size: 2MB</li>
+                              </ul>
+                              
+                              <div style={{ marginTop: 12 }}>
+                                <label style={{ cursor: uploading ? 'not-allowed' : 'pointer', display: 'inline-block', padding: '8px 16px', background: '#0B2545', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, color: '#fff', opacity: uploading ? 0.7 : 1 }}>
+                                  {uploading ? 'Uploading...' : 'Select File & Upload'}
+                                  <input type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={handleMedicalUpload} disabled={uploading} />
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Step 2: L Permit ── */}
+                  {step.key === 'permit' && !isLocked && (
+                    <div style={{ marginTop: 12 }}>
+                      {permitDone ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8 }}>
+                          <span style={{ fontSize: 24 }}>✅</span>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#065f46' }}>Learner permit verified</div>
+                            {userProfile?.permit_number && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>Permit #: {userProfile.permit_number}</div>}
+                          </div>
+                        </div>
+                      ) : permitRaw === 'uploaded' ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8 }}>
+                          <span style={{ fontSize: 24 }}>📄</span>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#1e40af' }}>Permit uploaded — awaiting verification</div>
+                            {userProfile?.permit_url && <a href={userProfile.permit_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#2563eb', marginTop: 4, display: 'inline-block' }}>View document →</a>}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ padding: '16px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 13, color: '#92400e' }}>
+                          ⚠️ Upload your learner permit to proceed. Contact admin if you need assistance.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {step.key === 'permit' && isLocked && (
+                    <div style={{ marginTop: 12, padding: '12px 16px', background: '#f3f4f6', borderRadius: 8, fontSize: 12, color: '#9ca3af' }}>
+                      🔒 Complete the Medical step first to unlock this step.
+                    </div>
+                  )}
+
+                  {/* ── Step 3: Practice ── */}
+                  {step.key === 'practice' && !isLocked && (
+                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      {/* Attendance Stats */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                        <div style={{ padding: '14px', background: '#eff6ff', borderRadius: 8, textAlign: 'center' }}>
+                          <div style={{ fontSize: 22, fontWeight: 900, color: '#0B2545' }}>{completedClasses}</div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 4 }}>Completed</div>
+                        </div>
+                        <div style={{ padding: '14px', background: '#fef3c7', borderRadius: 8, textAlign: 'center' }}>
+                          <div style={{ fontSize: 22, fontWeight: 900, color: '#92400e' }}>{Math.max(0, totalClasses - completedClasses)}</div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 4 }}>Remaining</div>
+                        </div>
+                        <div style={{ padding: '14px', background: '#ecfdf5', borderRadius: 8, textAlign: 'center' }}>
+                          <div style={{ fontSize: 22, fontWeight: 900, color: '#065f46' }}>{totalClasses}</div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 4 }}>Total</div>
+                        </div>
+                      </div>
+
+                      {/* Progress bar */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Practice Progress</span>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: '#0B2545' }}>{totalClasses > 0 ? Math.round((completedClasses / totalClasses) * 100) : 0}%</span>
+                        </div>
+                        <div style={{ height: 8, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${totalClasses > 0 ? (completedClasses / totalClasses) * 100 : 0}%`, background: completedClasses >= totalClasses ? '#16a34a' : '#0B2545', borderRadius: 99, transition: 'width 0.8s ease' }} />
+                        </div>
+                      </div>
+
+                      {/* Skill Progress */}
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: '#374151', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Skill Tracking</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                          {skills.map(skill => (
+                            <div key={skill.name} style={{ padding: '10px 14px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                                <span style={{ fontSize: 11, fontWeight: 700, color: '#374151' }}>{skill.name}</span>
+                                <span style={{ fontSize: 11, fontWeight: 800, color: skill.level >= 70 ? '#16a34a' : skill.level >= 40 ? '#d97706' : '#9ca3af' }}>{skill.level}%</span>
+                              </div>
+                              <div style={{ height: 4, background: '#e5e7eb', borderRadius: 2 }}>
+                                <div style={{ height: '100%', width: `${skill.level}%`, background: skill.level >= 70 ? '#16a34a' : skill.level >= 40 ? '#d97706' : '#d1d5db', borderRadius: 2, transition: 'width 0.8s ease' }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Schedule button */}
+                      <button onClick={() => goTo('/student/bookings')} style={{ ...css.ghostBtn, textAlign: 'center' }} className="ghost-btn">
+                        View Full Schedule →
+                      </button>
+                    </div>
+                  )}
+                  {step.key === 'practice' && isLocked && (
+                    <div style={{ marginTop: 12, padding: '12px 16px', background: '#f3f4f6', borderRadius: 8, fontSize: 12, color: '#9ca3af' }}>
+                      🔒 Complete the L Permit step first to unlock practice sessions.
+                    </div>
+                  )}
+
+                  {/* ── Step 4: Trial ── */}
+                  {step.key === 'trial' && !isLocked && (
+                    <div style={{ marginTop: 12 }}>
+                      {trialDone ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8 }}>
+                          <span style={{ fontSize: 28 }}>🎉</span>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 800, color: '#065f46' }}>Congratulations! Trial passed!</div>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>You have completed your driving course</div>
+                          </div>
+                        </div>
+                      ) : trialRaw === 'scheduled' ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8 }}>
+                          <span style={{ fontSize: 24 }}>📅</span>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#1e40af' }}>Trial scheduled</div>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Date: {userProfile?.trial_date || 'TBA'}</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ padding: '16px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 13, color: '#92400e' }}>
+                          ⏳ Trial will be scheduled by admin once all requirements are met.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {step.key === 'trial' && isLocked && (
+                    <div style={{ marginTop: 12, padding: '12px 16px', background: '#f3f4f6', borderRadius: 8, fontSize: 12, color: '#9ca3af' }}>
+                      🔒 {!practiceDone && !paymentDone ? 'Complete practice sessions and clear all payments' : !practiceDone ? 'Complete all practice sessions' : 'Clear all outstanding payments'} to unlock the Trial.
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ═══ RIGHT COLUMN — Payment + Quick Actions ═══ */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, position: 'sticky', top: 80 }}>
+          {/* Payment Summary */}
+          <div style={{ ...css.card, borderRadius: 12, border: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#111c2d' }}>💳 Payment Summary</div>
+              {paymentDone ? (
+                <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', borderRadius: 4 }}>FULLY PAID</span>
+              ) : (
+                <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 4 }}>BALANCE DUE</span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #f3f4f6' }}>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>Total Course Fee</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#111c2d' }}>{fmtLKR(totalFee)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #f3f4f6' }}>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>Amount Paid</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#16a34a' }}>{fmtLKR(Math.max(0, totalFee - user.outstandingFees))}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: user.outstandingFees > 0 ? '#dc2626' : '#6b7280' }}>Outstanding Balance</span>
+                <span style={{ fontSize: 16, fontWeight: 900, color: user.outstandingFees > 0 ? '#dc2626' : '#16a34a' }}>{fmtLKR(user.outstandingFees)}</span>
+              </div>
+            </div>
+
+            {user.outstandingFees > 0 && (
+              <button onClick={() => goTo('/student/payment')} style={{ ...css.primaryBtn, width: '100%', textAlign: 'center', marginTop: 16, borderRadius: 8 }} className="accent-btn">
+                Make Payment →
+              </button>
+            )}
+          </div>
+
+          {/* Upcoming Sessions */}
+          <div style={{ ...css.card, borderRadius: 12, border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#111c2d', marginBottom: 14 }}>📅 Upcoming Sessions</div>
+            {upcoming.length > 0 ? upcoming.slice(0, 4).map(b => {
+              const { day, month, weekday } = fmtDate(b?.date);
+              return (
+                <div key={b.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
+                  <div style={{ ...css.dateBox, background: '#0B2545', borderRadius: 8 }}>
+                    <span style={{ ...css.dateBoxMonth, color: '#93c5fd' }}>{month}</span>
+                    <span style={{ ...css.dateBoxDay, color: '#fff' }}>{day}</span>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#111c2d' }}>{b.vehicleType || 'Vehicle'}</div>
+                    <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{b.timeLabel || b.time || b.timeSlotId || ''} · {weekday}</div>
+                  </div>
+                  <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', background: '#ecfdf5', color: '#065f46', borderRadius: 4, textTransform: 'uppercase' }}>{b.status}</span>
                 </div>
               );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* 2-col layout */}
-      <div style={css.twoCol}>
-        {/* LEFT: Skills + Feedback */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={css.card}>
-            <SectionHeader title="Skill Progress" sub="Updated by instructor after each session" />
-            <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-              {skills.map(skill => (
-                <div key={skill.name}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#434655" }}>{skill.name}</span>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: skill.level >= 70 ? "#16a34a" : skill.level >= 50 ? "#0B2545" : "#ba1a1a" }}>{skill.level}%</span>
-                  </div>
-                  <div style={{ height: 4, background: "#dee2e6", borderRadius: 2 }}>
-                    <div style={{ height: "100%", width: `${skill.level}%`, background: skill.level >= 70 ? "#16a34a" : skill.level >= 50 ? "#0B2545" : "#16335a", borderRadius: 2, transition: "width 0.8s ease" }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Latest instructor feedback */}
-          <div style={css.card}>
-            <SectionHeader title="Instructor Feedback" sub="From your last 3 sessions" />
-            <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 14 }}>
-              {past.slice(0, 3).map(b => {
-                const { day, month } = fmtDate(b.date);
-                return (
-                  <div key={b.id} style={{ display: "flex", gap: 14, paddingBottom: 14, borderBottom: "1px solid #dee2e6" }}>
-                    <div style={css.dateBox}><span style={css.dateBoxMonth}>{month}</span><span style={css.dateBoxDay}>{day}</span></div>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#111c2d", marginBottom: 4 }}>{b.instructorName || b.instructor || "Instructor"}</div>
-                      <div style={{ fontSize: 12, color: "#505f76", lineHeight: 1.5 }}>{b.feedback || "Session completed. No additional notes."}</div>
-                    </div>
-                  </div>
-                );
-              })}
-              {past.length === 0 && (
-                <div style={{ textAlign: "center", padding: "20px 0", color: "#737686", fontSize: 12 }}>No past sessions yet.</div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT: Upcoming + Quick actions */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={css.card}>
-            <SectionHeader title="Upcoming Sessions" sub={`${upcoming.length} lesson${upcoming.length !== 1 ? "s" : ""} booked`} />
-            <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 14 }}>
-              {upcoming.length > 0 ? upcoming.slice(0, 3).map(b => {
-                const { day, month, weekday } = fmtDate(b.date);
-                return (
-                  <div key={b.id} style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <div style={{ ...css.dateBox, background: "#0B2545" }}>
-                      <span style={{ ...css.dateBoxMonth, color: "#ffffff" }}>{month}</span>
-                      <span style={{ ...css.dateBoxDay, color: "#ffffff" }}>{day}</span>
-                      <span style={{ fontSize: 8, color: "#737686", fontWeight: 700 }}>{weekday}</span>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#111c2d" }}>{VEHICLE_LABELS[b.vehicleType || b.vehicleId] || b.vehicleType || b.vehicleId || "Vehicle"}</div>
-                      <div style={{ fontSize: 11, color: "#505f76", marginTop: 2 }}>{b.timeSlot} · {b.instructorName || b.instructor || "Instructor"}</div>
-                      <div style={{ fontSize: 9, color: "#16a34a", fontWeight: 700, marginTop: 2, textTransform: "uppercase", letterSpacing: "0.08em" }}>{b.status}</div>
-                    </div>
-                  </div>
-                );
-              }) : (
-                <div style={{ textAlign: "center", padding: "20px 0" }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>📅</div>
-                  <p style={{ fontSize: 12, color: "#737686" }}>No upcoming sessions. Book your next lesson!</p>
-                </div>
-              )}
-            </div>
-            <button onClick={() => goTo("/student/bookings")} style={{ ...css.ghostBtn, width: "100%", marginTop: 16, textAlign: "center" }} className="ghost-btn">
+            }) : (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#9ca3af', fontSize: 12 }}>No upcoming sessions</div>
+            )}
+            <button onClick={() => goTo('/student/bookings')} style={{ ...css.ghostBtn, width: '100%', textAlign: 'center', marginTop: 12, borderRadius: 6 }} className="ghost-btn">
               View All Bookings
             </button>
           </div>
 
-          {/* Quick actions */}
-          <div style={{ ...css.card, background: "#0B2545", border: "none" }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "#ffffff", marginBottom: 6 }}>Quick Actions</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+          {/* Quick Actions */}
+          <div style={{ ...css.card, background: '#0B2545', border: 'none', borderRadius: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#93c5fd', marginBottom: 12 }}>Quick Actions</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
-                { label: "+ Book New Session", path: "/student/book" },
-                { label: "◎ Make Payment", path: "/student/payment" },
-                { label: "▲ View Full Progress", path: "/student/progress" },
-                { label: "◌ Notifications", path: "/student/notifications" },
+                { label: '+ Book Session', path: '/student/book' },
+                { label: '◎ Make Payment', path: '/student/payment' },
+                { label: '✍ Mock Test', path: '/student/mock-test' },
+                { label: '◌ Notifications', path: '/student/notifications' },
               ].map(a => (
-                <button key={a.label} onClick={() => goTo(a.path)} style={css.amberActionBtn} className="amber-action-btn">
+                <button key={a.label} onClick={() => goTo(a.path)} style={{ ...css.amberActionBtn, borderRadius: 6 }} className="amber-action-btn">
                   {a.label}
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* DMT info card */}
-          <div style={{ ...css.card, borderColor: "#dee2e6" }}>
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "#737686", marginBottom: 8 }}>Your DMT Office</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: "#111c2d", marginBottom: 4 }}>{user.dmtOffice} DMT</div>
-            <div style={{ fontSize: 12, color: "#505f76", lineHeight: 1.5 }}>
-              Theory exam &amp; road test will be conducted at this office.
-            </div>
-            <a href="https://www.motortraffic.gov.lk" target="_blank" rel="noopener noreferrer"
-              style={{ display: "inline-block", marginTop: 12, fontSize: 11, fontWeight: 700, color: "#0B2545", textDecoration: "none" }}>
-              DMT e-Services →
-            </a>
           </div>
         </div>
       </div>
@@ -611,22 +903,47 @@ function DashboardPage({ user, upcoming, past, currentStep, nextStep, goTo, skil
 // ═════════════════════════════════════════════════════════════════════════════
 // PROFILE PAGE
 // ═════════════════════════════════════════════════════════════════════════════
-function ProfilePage({ user, currentUser, userProfile, setUserProfile }) {
+function ProfilePage({ user, currentUser, userProfile, setUserProfile, packages = [], totalPaid = 0 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({
-    name: user.name, phone: user.phone || '', nic: user.nic || '', dob: user.dob || '', gender: user.gender || '',
-    address: user.address || '', emergencyContact: user.emergencyContact || '', licenseType: user.licenseType || 'B_manual', vehiclePreference: user.vehiclePreference || 'toyota_axio',
+    name: user.name, 
+    phone: user.phone || '', 
+    nic: user.nic || '', 
+    dob: user.dob || '', 
+    gender: user.gender || '',
+    email: user.email || '',
+    address: user.address || '', 
+    
+    learnerPermit: userProfile?.learnerPermit || '',
+    licenseType: userProfile?.licenseType || '',
+    drivingExperience: userProfile?.drivingExperience || '',
+    
+    emergencyName: userProfile?.emergencyName || '',
+    emergencyRelationship: userProfile?.emergencyRelationship || '',
+    emergencyPhone: userProfile?.emergencyPhone || '',
+    
+    district: userProfile?.district || user.district || ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   const rows = [
-    ['Full Name', user.name], ['NIC Number', user.nic || '—'], ['Date of Birth', user.dob || '—'], ['Gender', user.gender || '—'],
-    ['District', user.district || '—'], ['DMT Office', (user.dmtOffice || '—') + ' DMT'], ['Address', user.address || '—'],
-    ['Emergency Contact', user.emergencyContact || '—'], ['License Class', LICENSE_LABELS[user.licenseType] || user.licenseType || '—'],
-    ['Training Vehicle', VEHICLE_LABELS[user.vehiclePreference] || user.vehiclePreference || '—'], ['Enrolled Package', user.enrolledPackage || 'None'],
+    ['Student ID', user.id || '—'], 
     ['Account Status', user.status === 'approved' ? '✅ Active & Approved' : '⏳ Pending Approval'],
+    ['Full Name', user.name], 
+    ['NIC Number', user.nic || '—'], 
+    ['Date of Birth', user.dob || '—'], 
+    ['Gender', user.gender || '—'],
+    ['Mobile Number', user.phone || '—'],
+    ['Email', user.email || '—'],
+    ['Address', user.address || '—'],
+    ['District', user.district || '—'], 
+    ['Learner Permit No.', user.learnerPermit || '—'],
+    ['License Class', LICENSE_LABELS[user.licenseType] || user.licenseType || '—'],
+    ['Driving Experience', user.drivingExperience || '—'],
+    ['Emergency Contact', `${user.emergencyName || ''} (${user.emergencyRelationship || ''}) - ${user.emergencyPhone || ''}`], 
+    ['Enrolled Package', user.enrolledPackage || 'None'],
   ];
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -635,9 +952,19 @@ function ProfilePage({ user, currentUser, userProfile, setUserProfile }) {
     e.preventDefault();
     setLoading(true); setError(''); setSuccess('');
     try {
-      const userRef = doc(db, 'users', currentUser.uid);
-      await updateDoc(userRef, form);
-      setUserProfile({ ...userProfile, ...form });
+      const userRef = doc(db, 'users', userProfile.id);
+      
+      // Keep existing total_price and selected_vehicles, just update fees if needed
+      const currentCourseFee = userProfile?.total_price || 0;
+      const newOutstandingFees = Math.max(0, currentCourseFee - totalPaid);
+
+      const updateData = {
+        ...form,
+        outstandingFees: newOutstandingFees
+      };
+      
+      await updateDoc(userRef, updateData);
+      setUserProfile({ ...userProfile, ...updateData });
       setSuccess('Profile updated successfully!');
       setTimeout(() => { setSuccess(''); setIsEditing(false); }, 1500);
     } catch (err) {
@@ -647,37 +974,64 @@ function ProfilePage({ user, currentUser, userProfile, setUserProfile }) {
 
   if (isEditing) {
     return (
-      <div style={{ maxWidth: 640 }}>
+      <div style={{ maxWidth: 800 }}>
         <PageHeader title="Edit Profile" sub="Update your personal information" />
         {error && <div style={css.alertError}><span>⚠️</span> {error}</div>}
         {success && <div style={css.alertSuccess}><span>✅</span> {success}</div>}
         <form onSubmit={handleSubmit} style={{ ...css.card, marginTop: 24 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 20 }}>
+          
+          <h3 style={{ fontSize: 14, fontWeight: 800, color: '#0B2545', borderBottom: '1px solid #dee2e6', paddingBottom: 8, marginBottom: 16 }}>Personal & Contact</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 20, marginBottom: 32 }}>
             <FormField label="Full Name" name="name" value={form.name} onChange={handleChange} required />
-            <FormField label="Phone" name="phone" value={form.phone} onChange={handleChange} placeholder="07X XXX XXXX" />
-            <FormField label="NIC Number" name="nic" value={form.nic} onChange={handleChange} />
-            <FormField label="Date of Birth" name="dob" type="date" value={form.dob} onChange={handleChange} />
+            <FormField label="NIC Number" name="nic" value={form.nic} onChange={handleChange} required />
+            <FormField label="Date of Birth" name="dob" type="date" value={form.dob} onChange={handleChange} required />
             <div>
               <label style={css.formLabel}>Gender</label>
-              <select name="gender" value={form.gender} onChange={handleChange} style={css.formInput}>
+              <select name="gender" value={form.gender} onChange={handleChange} style={css.formInput} required>
                 <option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option>
               </select>
             </div>
-            <FormField label="Address" name="address" value={form.address} onChange={handleChange} />
-            <FormField label="Emergency Contact" name="emergencyContact" value={form.emergencyContact} onChange={handleChange} />
+            <FormField label="Mobile Number" name="phone" value={form.phone} onChange={handleChange} placeholder="07X XXX XXXX" required />
+            <FormField label="Email" name="email" value={form.email} onChange={handleChange} />
+            <FormField label="Address" name="address" value={form.address} onChange={handleChange} required />
+            <FormField label="District" name="district" value={form.district} onChange={handleChange} placeholder="e.g. Kurunegala" />
+          </div>
+
+          <h3 style={{ fontSize: 14, fontWeight: 800, color: '#0B2545', borderBottom: '1px solid #dee2e6', paddingBottom: 8, marginBottom: 16 }}>License & Package</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 20, marginBottom: 32 }}>
+            <FormField label="Learner Permit No." name="learnerPermit" value={form.learnerPermit} onChange={handleChange} />
             <div>
-              <label style={css.formLabel}>License Class</label>
-              <select name="licenseType" value={form.licenseType} onChange={handleChange} style={css.formInput}>
-                {Object.entries(LICENSE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <label style={css.formLabel}>License Type</label>
+              <select name="licenseType" value={form.licenseType} onChange={handleChange} style={css.formInput} required>
+                <option value="">Select Type</option>
+                <option value="Light Vehicle">Light Vehicle (A, B, B1)</option>
+                <option value="Heavy Vehicle">Heavy Vehicle (C, CE)</option>
               </select>
             </div>
             <div>
-              <label style={css.formLabel}>Preferred Vehicle</label>
-              <select name="vehiclePreference" value={form.vehiclePreference} onChange={handleChange} style={css.formInput}>
-                {Object.entries(VEHICLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <label style={css.formLabel}>Driving Experience</label>
+              <select name="drivingExperience" value={form.drivingExperience} onChange={handleChange} style={css.formInput} required>
+                <option value="">Select</option>
+                <option value="Beginner">Beginner</option>
+                <option value="Intermediate">Intermediate</option>
+                <option value="Experienced">Experienced</option>
               </select>
+            </div>
+            <div>
+              <label style={css.formLabel}>Selected Vehicles (Read-Only)</label>
+              <div style={{ ...css.formInput, background: '#f0f3ff', color: '#505f76', padding: '10px 14px' }}>
+                {user.enrolledPackage || 'None'}
+              </div>
             </div>
           </div>
+
+          <h3 style={{ fontSize: 14, fontWeight: 800, color: '#0B2545', borderBottom: '1px solid #dee2e6', paddingBottom: 8, marginBottom: 16 }}>Emergency Contact</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 20, marginBottom: 32 }}>
+            <FormField label="Contact Name" name="emergencyName" value={form.emergencyName} onChange={handleChange} required />
+            <FormField label="Relationship" name="emergencyRelationship" value={form.emergencyRelationship} onChange={handleChange} required />
+            <FormField label="Phone Number" name="emergencyPhone" value={form.emergencyPhone} onChange={handleChange} required />
+          </div>
+
           <div style={{ display: 'flex', gap: 12, marginTop: 28 }}>
             <button type="submit" disabled={loading} style={css.primaryBtn} className="accent-btn">{loading ? 'Saving…' : 'Save Changes'}</button>
             <button type="button" onClick={() => setIsEditing(false)} style={css.ghostBtn} className="ghost-btn">Cancel</button>
@@ -688,7 +1042,7 @@ function ProfilePage({ user, currentUser, userProfile, setUserProfile }) {
   }
 
   return (
-    <div style={{ maxWidth: 640 }}>
+    <div style={{ maxWidth: 800 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <PageHeader title="My Profile" sub="Your registration details" />
         <button onClick={() => setIsEditing(true)} style={{...css.ghostBtn, border: '1px solid #dee2e6'}} className="ghost-btn">✎ Edit Profile</button>
@@ -701,8 +1055,8 @@ function ProfilePage({ user, currentUser, userProfile, setUserProfile }) {
             <div style={{ fontSize: 12, color: '#505f76', marginTop: 2 }}>{user.email}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          {rows.map(([label, val]) => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '0 40px' }}>
+          {rows.map(([label, val], idx) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #e7eeff', flexWrap: 'wrap', gap: 8 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: '#737686', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{label}</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: '#434655', textAlign: 'right', maxWidth: '60%' }}>{val}</span>
@@ -721,7 +1075,7 @@ function ProfilePage({ user, currentUser, userProfile, setUserProfile }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // BOOK SESSION PAGE
 // ═════════════════════════════════════════════════════════════════════════════
-function BookSessionPage({ packages, user, currentUser, userProfile, setUserProfile, instructors, goTo }) {
+function BookSessionPage({ packages, user, currentUser, userProfile, totalPaid = 0, setUserProfile, instructors, goTo }) {
   const [sessionType, setSessionType] = useState('driving');
   const [instructorId, setInstructorId] = useState('');
   const [date, setDate] = useState('');
@@ -730,68 +1084,42 @@ function BookSessionPage({ packages, user, currentUser, userProfile, setUserProf
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Packages state
-  const [enrolling, setEnrolling] = useState(null);
-
-  const isProfileFilled = userProfile?.nic && userProfile?.dob && userProfile?.address && userProfile?.emergencyContact;
-  const isApproved = userProfile?.status === 'approved';
-
-  if (!isProfileFilled) {
-    return (
-      <div style={{ maxWidth: 800 }}>
-        <PageHeader title="Profile Incomplete" sub="Please complete your profile to access this feature." />
-        <div style={css.card}>
-          <p style={{ color: '#ba1a1a', fontWeight: 'bold', marginBottom: 16 }}>You must fill in your NIC, Date of Birth, Address, and Emergency Contact in your profile before you can proceed.</p>
-          <button onClick={() => goTo('/student/profile')} style={css.primaryBtn}>Go to Profile</button>
-        </div>
-      </div>
-    );
-  }
+  const isApproved = ['L_PERMIT_APPROVED', 'IN_TRAINING', 'PRACTICE_COMPLETED', 'TRIAL_PENDING'].includes(userProfile?.status);
 
   if (!isApproved) {
     return (
       <div style={{ maxWidth: 800 }}>
-        <PageHeader title="Pending Approval" sub="Your account is pending admin approval." />
+        <PageHeader title="L Permit Required" sub="Your L Permit is pending admin approval." />
         <div style={css.card}>
-          <p style={{ color: '#ba1a1a', fontWeight: 'bold' }}>You cannot access this feature until an administrator has approved your profile.</p>
+          <p style={{ color: '#ba1a1a', fontWeight: 'bold' }}>You cannot book practical driving sessions until an administrator has approved your L Permit.</p>
         </div>
       </div>
     );
   }
-
-  const handleEnroll = async (pkg) => {
-    setEnrolling(pkg.id);
-    try {
-      const userRef = doc(db, "users", currentUser.uid);
-      await updateDoc(userRef, {
-        enrolledPackage: pkg.name,
-        packageId: pkg.id,
-        classesTotal: pkg.features.some(f => f.includes('25')) ? 25 : pkg.features.some(f => f.includes('18')) ? 18 : 10,
-        outstandingFees: (userProfile?.outstandingFees || 0) + pkg.price
-      });
-      setUserProfile({ ...userProfile, enrolledPackage: pkg.name, packageId: pkg.id });
-    } catch (e) {
-      console.error(e);
-      alert("Failed to enroll");
-    } finally {
-      setEnrolling(null);
-    }
-  };
 
   const handleBook = async (e) => {
     e.preventDefault();
     setLoading(true); setError(''); setSuccess('');
     try {
       const instructor = instructors.find(i => i.id === instructorId);
-      await addDoc(collection(db, 'bookings'), {
+      
+      // Add to 'sessions' collection (camelCase fields)
+      await addDoc(collection(db, 'sessions'), {
         studentId: currentUser.uid,
         studentName: user.name,
-        instructorId,
+        instructorId: instructorId,
         instructorName: instructor?.name || 'Unassigned',
-        date, timeSlot, sessionType,
-        status: 'pending',
-        createdAt: new Date().toISOString()
+        date: date,
+        time: timeSlot,
+        timeSlotId: timeSlot,
+        sessionType: sessionType,
+        status: 'scheduled',
+        attendance: null,
+        progress: 'not_started',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       });
+
       setSuccess('Session booked successfully!');
       setTimeout(() => { setSuccess(''); setDate(''); setTimeSlot(''); }, 2000);
     } catch (err) { console.error(err); setError('Booking failed.'); }
@@ -800,39 +1128,6 @@ function BookSessionPage({ packages, user, currentUser, userProfile, setUserProf
 
   return (
     <div style={{ maxWidth: 800 }}>
-      {/* ── Package Selection ── */}
-      <div style={{ marginBottom: 40 }}>
-        <PageHeader title="Course Packages" sub="Select or view your enrolled course package" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginTop: 24 }}>
-          {packages.filter(p => p.isActive).map(pkg => {
-            const isEnrolled = user.enrolledPackage === pkg.name || userProfile?.packageId === pkg.id;
-            return (
-              <div key={pkg.id} style={{ ...css.card, position: 'relative', border: isEnrolled ? '2px solid #0B2545' : '1px solid #dee2e6' }}>
-                {pkg.popular && <div style={{ position: 'absolute', top: -12, left: 24, background: '#0B2545', color: '#000', fontSize: 10, fontWeight: 900, padding: '4px 12px', borderRadius: 12 }}>POPULAR</div>}
-                {isEnrolled && <div style={{ position: 'absolute', top: 12, right: 12, background: '#10b981', color: '#fff', fontSize: 10, fontWeight: 900, padding: '4px 8px', borderRadius: 12 }}>ENROLLED</div>}
-                
-                <h3 style={{ fontSize: 16, fontWeight: 800, color: '#111c2d' }}>{pkg.name}</h3>
-                <div style={{ fontSize: 24, fontWeight: 900, color: '#0B2545', margin: '12px 0' }}>{fmtLKR(pkg.price)}</div>
-                <div style={{ fontSize: 12, color: '#505f76', marginBottom: 20 }}>{pkg.duration} • {pkg.vehicleType}</div>
-                
-                <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px 0', fontSize: 13, color: '#434655' }}>
-                  {(pkg.features || []).map((f, i) => <li key={i} style={{ marginBottom: 8 }}>✓ {f}</li>)}
-                </ul>
-                <button
-                  onClick={() => handleEnroll(pkg)}
-                  disabled={isEnrolled || enrolling === pkg.id}
-                  style={isEnrolled ? { ...css.primaryBtn, background: '#dee2e6', color: '#737686' } : css.primaryBtn}
-                  className={!isEnrolled ? 'accent-btn' : ''}
-                >
-                  {isEnrolled ? 'Current Package' : enrolling === pkg.id ? 'Enrolling...' : 'Enroll Now'}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div style={{ borderTop: '1px solid #dee2e6', margin: '40px 0' }}></div>
 
       {/* ── Book a Session ── */}
       <PageHeader title="Book a Session" sub="Schedule your next driving lesson or theory class" />
@@ -858,7 +1153,66 @@ function BookSessionPage({ packages, user, currentUser, userProfile, setUserProf
           </div>
           <div>
             <label style={css.formLabel}>Date</label>
-            <input type="date" style={css.formInput} value={date} onChange={e => setDate(e.target.value)} required />
+            <div className="student-calendar-wrapper">
+              <style>{`
+                .student-calendar-wrapper .react-datepicker-wrapper,
+                .student-calendar-wrapper .react-datepicker__input-container { width: 100%; display: block; }
+                .student-calendar-wrapper .react-datepicker__input-container input { width: 100%; }
+                .student-calendar-wrapper .react-datepicker {
+                  font-family: inherit !important;
+                  border: 1px solid #dee2e6 !important;
+                  border-radius: 0 !important;
+                }
+                .student-calendar-wrapper .react-datepicker__header {
+                  background: #0B2545 !important;
+                  border-bottom: none !important;
+                  border-radius: 0 !important;
+                  padding: 12px 10px 8px !important;
+                }
+                .student-calendar-wrapper .react-datepicker__current-month {
+                  color: #fff !important; font-weight: 800 !important; font-size: 13px !important;
+                }
+                .student-calendar-wrapper .react-datepicker__day-name {
+                  color: rgba(255,255,255,0.7) !important; font-weight: 700 !important; font-size: 10px !important;
+                }
+                .student-calendar-wrapper .react-datepicker__day {
+                  font-size: 12px !important; font-weight: 600 !important; border-radius: 0 !important;
+                  transition: all 0.15s !important;
+                }
+                .student-calendar-wrapper .react-datepicker__day:hover {
+                  background: rgba(11,37,69,0.1) !important; border-radius: 0 !important;
+                }
+                .student-calendar-wrapper .react-datepicker__day--selected {
+                  background: #0B2545 !important; color: #fff !important; font-weight: 800 !important;
+                }
+                .student-calendar-wrapper .react-datepicker__day--today {
+                  font-weight: 900 !important; color: #0B2545 !important; border: 2px solid #0B2545 !important;
+                }
+                .student-calendar-wrapper .react-datepicker__day--today.react-datepicker__day--selected {
+                  color: #fff !important;
+                }
+                .student-calendar-wrapper .react-datepicker__navigation-icon::before {
+                  border-color: #fff !important;
+                }
+              `}</style>
+              <DatePicker
+                selected={date ? new Date(date + 'T00:00:00') : null}
+                onChange={(d) => {
+                  if (d) {
+                    const offset = d.getTimezoneOffset();
+                    const local = new Date(d.getTime() - (offset * 60 * 1000));
+                    setDate(local.toISOString().split('T')[0]);
+                  } else {
+                    setDate('');
+                  }
+                }}
+                customInput={<input style={css.formInput} />}
+                dateFormat="yyyy-MM-dd"
+                placeholderText="Select a date"
+                minDate={new Date()}
+                required
+              />
+            </div>
           </div>
           <div>
             <label style={css.formLabel}>Time Slot</label>
@@ -868,9 +1222,16 @@ function BookSessionPage({ packages, user, currentUser, userProfile, setUserProf
             </select>
           </div>
         </div>
-        <button type="submit" disabled={loading} style={{ ...css.primaryBtn, marginTop: 28, width: 'auto', padding: '0 32px' }} className="accent-btn">
-          {loading ? 'Booking...' : 'Confirm Booking'}
-        </button>
+        
+        {(!user.enrolledPackage || user.enrolledPackage === 'None') ? (
+          <div style={{...css.alertError, marginTop: 24}}>
+            <span>⚠️</span> You must enroll in a package above before you can book a session.
+          </div>
+        ) : (
+          <button type="submit" disabled={loading} style={{ ...css.primaryBtn, marginTop: 28, width: 'auto', padding: '0 32px' }} className="accent-btn">
+            {loading ? 'Booking...' : 'Confirm Booking'}
+          </button>
+        )}
       </form>
     </div>
   );
@@ -902,7 +1263,7 @@ function BookingsPage({ upcoming, past, instructors }) {
             <p style={{ color: "#737686", fontSize: 13 }}>No {tab} sessions found.</p>
           </div>
         ) : list.map(b => {
-          const { day, month, weekday } = fmtDate(b.date);
+          const { day, month, weekday } = fmtDate(b?.date);
           return (
             <div key={b.id} style={{ ...css.card, display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ ...css.dateBox, background: b.status === "completed" ? "#16a34a" : b.status === "confirmed" ? "#1e3a5f" : "#dee2e6", flexShrink: 0 }}>
@@ -916,15 +1277,15 @@ function BookingsPage({ upcoming, past, instructors }) {
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#111c2d", marginBottom: 4 }}>
                       {VEHICLE_LABELS[b.vehicleType || b.vehicleId] || b.vehicleType || b.vehicleId || "Vehicle"} — Practical Lesson
                     </div>
-                    <div style={{ fontSize: 12, color: "#505f76" }}>{b.timeSlot} · {resolveInstructor(b)}</div>
+                    <div style={{ fontSize: 12, color: "#505f76" }}>{b.time || b.timeSlotId} · {resolveInstructor(b)}</div>
                   </div>
-                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", padding: "4px 10px", border: `1px solid ${b.status === "completed" ? "#16a34a" : b.status === "confirmed" ? "#1d4ed8" : "#c3c6d7"}`, color: b.status === "completed" ? "#16a34a" : b.status === "confirmed" ? "#60a5fa" : "#505f76" }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", padding: "4px 10px", border: `1px solid ${b.status === "completed" ? "#16a34a" : b.status === "scheduled" ? "#1d4ed8" : "#c3c6d7"}`, color: b.status === "completed" ? "#16a34a" : b.status === "scheduled" ? "#60a5fa" : "#505f76" }}>
                     {b.status}
                   </span>
                 </div>
-                {b.feedback && (
+                {b.notes && (
                   <div style={{ marginTop: 10, padding: "10px 14px", background: "#dee2e6", borderLeft: "3px solid #0B2545", fontSize: 12, color: "#505f76", lineHeight: 1.5 }}>
-                    💬 {b.feedback}
+                    💬 {b.notes}
                   </div>
                 )}
               </div>
@@ -947,21 +1308,10 @@ function MakePaymentPage({ payments, user, currentUser, userProfile, setUserProf
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [paymentFor, setPaymentFor] = useState('Package Fee');
+  const [otherDescription, setOtherDescription] = useState('');
 
-  const isProfileFilled = userProfile?.nic && userProfile?.dob && userProfile?.address && userProfile?.emergencyContact;
   const isApproved = userProfile?.status === 'approved';
-
-  if (!isProfileFilled) {
-    return (
-      <div style={{ maxWidth: 800 }}>
-        <PageHeader title="Profile Incomplete" sub="Please complete your profile to access this feature." />
-        <div style={css.card}>
-          <p style={{ color: '#ba1a1a', fontWeight: 'bold', marginBottom: 16 }}>You must fill in your NIC, Date of Birth, Address, and Emergency Contact in your profile before you can proceed.</p>
-          <button onClick={() => goTo('/student/profile')} style={css.primaryBtn}>Go to Profile</button>
-        </div>
-      </div>
-    );
-  }
 
   if (!isApproved) {
     return (
@@ -974,46 +1324,72 @@ function MakePaymentPage({ payments, user, currentUser, userProfile, setUserProf
     );
   }
 
+  // Helper: upload with timeout so it never hangs forever
+  const uploadWithTimeout = (storageRef, file, timeoutMs = 10000) => {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Upload timed out')), timeoutMs);
+      uploadBytes(storageRef, file)
+        .then(snap => { clearTimeout(timer); resolve(snap); })
+        .catch(err  => { clearTimeout(timer); reject(err);  });
+    });
+  };
+
   const handlePay = async (e) => {
     e.preventDefault();
     const payAmt = Number(amount);
     if (!payAmt || payAmt <= 0) return setError('Invalid amount');
+    if (paymentFor === 'Others' && !otherDescription.trim()) return setError('Please specify the payment reason');
     if (!reference) return setError('Please enter the reference number');
     if (!receiptFile) return setError('Please upload a receipt photo');
 
     setLoading(true); setError(''); setSuccess('');
     try {
-      // Upload receipt photo to Firebase Storage
-      const fileExt = receiptFile.name.split('.').pop();
-      const fileName = `receipts/${currentUser.uid}_${Date.now()}.${fileExt}`;
-      const storageRef = ref(storage, fileName);
-      await uploadBytes(storageRef, receiptFile);
-      const receiptUrl = await getDownloadURL(storageRef);
+      // Try to upload receipt; if Storage isn't configured, fall back gracefully
+      let receiptUrl = '';
+      try {
+        const fileExt = receiptFile.name.split('.').pop();
+        const fileName = `receipts/${currentUser.uid}_${Date.now()}.${fileExt}`;
+        const storageRef = ref(storage, fileName);
+        await uploadWithTimeout(storageRef, receiptFile, 10000);
+        receiptUrl = await getDownloadURL(storageRef);
+      } catch (uploadErr) {
+        console.warn('Receipt upload failed, submitting without image URL:', uploadErr.message);
+        // Continue — the reference number acts as proof of payment
+      }
+
+      const finalPaymentFor = paymentFor === 'Others' ? `Others - ${otherDescription.trim()}` : paymentFor;
 
       await addDoc(collection(db, 'payments'), {
-        studentId: currentUser.uid, 
-        studentName: user.name, 
-        amount: payAmt, 
+        studentId: currentUser.uid,
+        student_id: currentUser.uid,
+        studentName: user.name,
+        amount: payAmt,
         method: 'online_transfer',
         reference: reference,
         receiptUrl: receiptUrl,
-        status: 'pending', 
-        date: new Date().toISOString()
+        status: 'pending',
+        date: new Date().toISOString(),
+        payment_date: new Date().toISOString(),
+        paymentFor: finalPaymentFor,
+        description: paymentFor === 'Others' ? otherDescription.trim() : ''
       });
-      
+
       setSuccess('Payment submitted! Awaiting admin approval.');
-      setTimeout(() => { 
-        setSuccess(''); 
-        setAmount(''); 
+      setTimeout(() => {
+        setSuccess('');
+        setAmount('');
         setReference('');
         setReceiptFile(null);
-        setTab('history'); 
+        setPaymentFor('Package Fee');
+        setOtherDescription('');
+        setTab('history');
       }, 2500);
-    } catch (err) { 
-      console.error(err); 
-      setError('Payment submission failed.'); 
+    } catch (err) {
+      console.error(err);
+      setError('Payment submission failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
-    finally { setLoading(false); }
   };
 
   return (
@@ -1047,12 +1423,46 @@ function MakePaymentPage({ payments, user, currentUser, userProfile, setUserProf
               <input type="text" style={css.formInput} value="Online Bank Transfer" disabled />
             </div>
             <div>
+              <label style={css.formLabel}>Payment For</label>
+              <select 
+                style={css.formInput} 
+                value={paymentFor} 
+                onChange={e => setPaymentFor(e.target.value)}
+                required
+              >
+                <option value="Package Fee">Package Fee</option>
+                <option value="Medical Certificate">Medical Certificate</option>
+                <option value="DMT Application">DMT Application</option>
+                <option value="Others">Others</option>
+              </select>
+            </div>
+            {paymentFor === 'Others' && (
+              <div>
+                <label style={css.formLabel}>Specify Reason</label>
+                <input 
+                  type="text" 
+                  style={css.formInput} 
+                  value={otherDescription} 
+                  onChange={e => setOtherDescription(e.target.value)} 
+                  placeholder="e.g. Extra driving hours, Book/Study materials" 
+                  required 
+                />
+              </div>
+            )}
+            <div>
               <label style={css.formLabel}>Reference Number</label>
               <input type="text" style={css.formInput} value={reference} onChange={e => setReference(e.target.value)} placeholder="e.g. REF123456789" required />
             </div>
             <div>
               <label style={css.formLabel}>Receipt Photo</label>
-              <input type="file" accept="image/*" style={css.formInput} onChange={e => setReceiptFile(e.target.files[0])} required />
+              <input 
+                key={receiptFile ? 'loaded' : 'empty'}
+                type="file" 
+                accept="image/*" 
+                style={css.formInput} 
+                onChange={e => setReceiptFile(e.target.files[0])} 
+                required 
+              />
             </div>
             <button type="submit" disabled={loading} style={{ ...css.primaryBtn, marginTop: 8 }} className="accent-btn">
               {loading ? 'Submitting...' : 'Submit Payment Details'}
@@ -1066,7 +1476,9 @@ function MakePaymentPage({ payments, user, currentUser, userProfile, setUserProf
           ) : payments.map(p => (
             <div key={p.id} style={{ ...css.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px' }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#111c2d' }}>{p.method.replace('_', ' ').toUpperCase()} Payment</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#111c2d' }}>
+                  {p.paymentFor ? p.paymentFor : `${p.method.replace('_', ' ').toUpperCase()} Payment`}
+                </div>
                 <div style={{ fontSize: 11, color: '#505f76', marginTop: 4 }}>{fmtDate(p.date).day} {fmtDate(p.date).month} • Ref: {p.reference || p.id.slice(0, 6)}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -1086,8 +1498,11 @@ function MakePaymentPage({ payments, user, currentUser, userProfile, setUserProf
 // ═════════════════════════════════════════════════════════════════════════════
 // PROGRESS PAGE
 // ═════════════════════════════════════════════════════════════════════════════
-function ProgressPage({ user, past, skills }) {
+function ProgressPage({ user, past, skills, mockResults }) {
   const progress = user.progress;
+  const passedMockTests = mockResults?.filter(r => r.passed)?.length || 0;
+  const mockProgress = Math.min(100, Math.round((passedMockTests / 10) * 100));
+
   return (
     <div>
       <PageHeader title="Progress Tracker" sub="Your full DMT journey — auto-updated after each instructor session" />
@@ -1115,6 +1530,33 @@ function ProgressPage({ user, past, skills }) {
               Classes completed: <strong style={{ color: "#111c2d" }}>{user.classesCompleted}/{user.classesTotal}</strong><br />
               Outstanding fees: <strong style={{ color: user.outstandingFees > 0 ? "#ba1a1a" : "#16a34a" }}>{fmtLKR(user.outstandingFees)}</strong><br />
               Current step: <strong style={{ color: "#0B2545" }}>{DMT_STEPS.find(s => user.progress < s.val)?.label || "Complete"}</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Mock Test Progress */}
+        <div style={{ ...css.card, display: "flex", gap: 32, alignItems: "center", flexWrap: "wrap", borderLeft: "4px solid #16a34a" }}>
+          <div style={{ position: "relative", width: 100, height: 100, flexShrink: 0 }}>
+            <svg width="100" height="100" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#dee2e6" strokeWidth="8" />
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#16a34a" strokeWidth="8"
+                strokeDasharray={`${2 * Math.PI * 40}`}
+                strokeDashoffset={`${2 * Math.PI * 40 * (1 - mockProgress / 100)}`}
+                strokeLinecap="round" transform="rotate(-90 50 50)"
+                style={{ transition: "stroke-dashoffset 1.2s ease" }}
+              />
+            </svg>
+            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ fontSize: 22, fontWeight: 900, color: "#111c2d" }}>{mockProgress}%</span>
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#111c2d", marginBottom: 6 }}>Mock Test Progress</div>
+            <div style={{ fontSize: 13, color: "#505f76", lineHeight: 1.6 }}>
+              Tests Passed: <strong style={{ color: passedMockTests >= 10 ? "#16a34a" : "#111c2d" }}>{passedMockTests} / 10</strong><br />
+              <span style={{ fontSize: 11, color: "#737686" }}>
+                {passedMockTests >= 10 ? "🎉 You are fully prepared for the Theory Exam!" : "Keep practicing to reach 100% readiness for your DMT Theory Exam."}
+              </span>
             </div>
           </div>
         </div>
@@ -1257,6 +1699,484 @@ function FormField({ label, name, type = "text", value, onChange, placeholder, r
       />
     </div>
   );
+}
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MOCK TEST PAGE
+// ═════════════════════════════════════════════════════════════════════════════
+function MockTestPage({ currentUser, mockResults }) {
+  const [view, setView] = useState('list'); // 'list' | 'active' | 'review'
+  const [activeTestNum, setActiveTestNum] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [answers, setAnswers] = useState({});
+  const [currentQ, setCurrentQ] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(40 * 60); // 40 minutes in seconds
+  const [timerActive, setTimerActive] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [reviewData, setReviewData] = useState(null);
+
+  // Timer countdown
+  useEffect(() => {
+    if (!timerActive) return;
+    const interval = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timerActive]);
+
+  // Auto-submit when time is up
+   
+  useEffect(() => {
+    if (timerActive && timeLeft === 0 && view === 'active') {
+      handleSubmitTest();
+    }
+  }, [timeLeft]);
+
+  const formatTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+
+  const getDifficultyLabel = (testNum) => {
+    if (testNum <= 3) return { label: 'Easy', color: '#16a34a', bg: '#f0fdf4' };
+    if (testNum <= 7) return { label: 'Medium', color: '#d97706', bg: '#fffbeb' };
+    return { label: 'Hard', color: '#dc2626', bg: '#fef2f2' };
+  };
+
+  const getTestResult = (testNum) => {
+    return mockResults.find(r => r.testId === `mock_test_${testNum}`);
+  };
+
+  const startTest = (testNum) => {
+    const testQs = getMockTest(testNum);
+    setActiveTestNum(testNum);
+    setQuestions(testQs);
+    setAnswers({});
+    setCurrentQ(0);
+    setTimeLeft(40 * 60);
+    setTimerActive(true);
+    setView('active');
+  };
+
+  const selectAnswer = (qIndex, optionIndex) => {
+    setAnswers(prev => ({ ...prev, [qIndex]: optionIndex }));
+  };
+
+  async function handleSubmitTest() {
+    setTimerActive(false);
+    setSubmitting(true);
+
+    let score = 0;
+    questions.forEach((q, idx) => {
+      if (answers[idx] === q.correct) score++;
+    });
+
+    const passed = score >= 30; // 75% pass mark (30/40)
+
+    try {
+      await addDoc(collection(db, 'mock_test_results'), {
+        studentId: currentUser.uid,
+        testId: `mock_test_${activeTestNum}`,
+        score,
+        total: 40,
+        passed,
+        completedAt: new Date().toISOString(),
+        timeTaken: (40 * 60) - timeLeft
+      });
+    } catch (err) {
+      console.error('Failed to save mock test result:', err);
+    }
+
+    setReviewData({ score, total: 40, passed, questions, answers });
+    setSubmitting(false);
+    setView('review');
+  };
+
+  const backToList = () => {
+    setView('list');
+    setActiveTestNum(null);
+    setQuestions([]);
+    setAnswers({});
+    setReviewData(null);
+  };
+
+  // ── TEST LIST VIEW ──
+  if (view === 'list') {
+    return (
+      <div style={{ maxWidth: 900 }}>
+        <PageHeader title="Mock Driving Tests" sub="Practice for your DMT theory exam with 10 structured mock tests" />
+
+        {/* Stats Overview */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 28 }}>
+          <div style={{ ...css.statCard, borderLeft: '3px solid #0B2545' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: '#737686', textTransform: 'uppercase' }}>Total Tests</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: '#111c2d' }}>10</div>
+          </div>
+          <div style={{ ...css.statCard, borderLeft: '3px solid #16a34a' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: '#737686', textTransform: 'uppercase' }}>Completed</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: '#16a34a' }}>{mockResults.length}</div>
+          </div>
+          <div style={{ ...css.statCard, borderLeft: '3px solid #d97706' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: '#737686', textTransform: 'uppercase' }}>Passed</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: '#d97706' }}>{mockResults.filter(r => r.passed).length}</div>
+          </div>
+          <div style={{ ...css.statCard, borderLeft: '3px solid #2563eb' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: '#737686', textTransform: 'uppercase' }}>Best Score</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: '#2563eb' }}>
+              {mockResults.length > 0 ? `${Math.max(...mockResults.map(r => r.score))}/40` : '—'}
+            </div>
+          </div>
+        </div>
+
+        {/* Info Banner */}
+        <div style={{ ...css.stepAlert, marginBottom: 24, borderLeftColor: '#2563eb' }}>
+          <span style={{ fontSize: 28 }}>📝</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: '#0B2545', textTransform: 'uppercase', marginBottom: 4 }}>
+              Exam Format
+            </div>
+            <div style={{ fontSize: 13, color: '#505f76', lineHeight: 1.5 }}>
+              Each test has <strong>40 questions</strong> (20 Theory + 20 Road Signs) · <strong>40 minutes</strong> time limit · Pass mark: <strong>30/40 (75%)</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Test Cards Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+          {Array.from({ length: 10 }, (_, i) => i + 1).map(testNum => {
+            const diff = getDifficultyLabel(testNum);
+            const result = getTestResult(testNum);
+            return (
+              <div key={testNum} style={{ ...css.card, padding: 0, overflow: 'hidden', transition: 'box-shadow 0.2s', cursor: 'pointer' }}
+                   onClick={() => startTest(testNum)}
+                   onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 20px rgba(11,37,69,0.12)'}
+                   onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
+                {/* Card Header */}
+                <div style={{ background: '#0B2545', padding: '20px 20px 16px', color: '#fff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', opacity: 0.7 }}>Mock Test</span>
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', padding: '3px 10px', background: diff.bg, color: diff.color, borderRadius: 4 }}>
+                      {diff.label}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: '-0.02em' }}>#{String(testNum).padStart(2, '0')}</div>
+                </div>
+                {/* Card Body */}
+                <div style={{ padding: '16px 20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, color: '#505f76' }}>
+                      <span style={{ marginRight: 12 }}>📖 20 Theory</span>
+                      <span>🚦 20 Signs</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#737686' }}>⏱ 40 min</span>
+                  </div>
+
+                  {result ? (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: result.passed ? '#f0fdf4' : '#fef2f2', border: `1px solid ${result.passed ? '#bbf7d0' : '#fecaca'}`, borderRadius: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: result.passed ? '#16a34a' : '#dc2626' }}>
+                          {result.passed ? '✅ PASSED' : '❌ FAILED'}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#737686', marginTop: 2 }}>
+                          {new Date(result.completedAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: result.passed ? '#16a34a' : '#dc2626' }}>
+                        {result.score}/40
+                      </div>
+                    </div>
+                  ) : (
+                    <button style={{ ...css.primaryBtn, width: '100%', textAlign: 'center', padding: '10px 0' }} className="accent-btn">
+                      Start Test →
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── ACTIVE TEST SESSION VIEW ──
+  if (view === 'active') {
+    const q = questions[currentQ];
+    if (!q) return null;
+    const answeredCount = Object.keys(answers).length;
+    const isUrgent = timeLeft <= 5 * 60; // less than 5 min
+
+    return (
+      <div style={{ maxWidth: 1000 }}>
+        {/* Top Bar with Timer */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', color: '#0B2545', textTransform: 'uppercase' }}>Mock Test #{String(activeTestNum).padStart(2, '0')}</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: '#111c2d' }}>Question {currentQ + 1} of 40</div>
+          </div>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <div style={{ textAlign: 'center', padding: '8px 20px', background: isUrgent ? '#fef2f2' : '#e7eeff', border: `2px solid ${isUrgent ? '#dc2626' : '#0B2545'}`, borderRadius: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: isUrgent ? '#dc2626' : '#737686', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Time Left</div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: isUrgent ? '#dc2626' : '#0B2545', fontFamily: 'monospace' }}>{formatTime(timeLeft)}</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '8px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: '#737686', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Answered</div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#16a34a' }}>{answeredCount}/40</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 20, alignItems: 'start' }}>
+          {/* Question Card */}
+          <div style={{ ...css.card, padding: 0 }}>
+            {/* Question type badge */}
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid #dee2e6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', padding: '4px 12px', background: q.type === 'theory' ? '#e7eeff' : '#fef3c7', color: q.type === 'theory' ? '#0B2545' : '#92400e', borderRadius: 4 }}>
+                {q.type === 'theory' ? '📖 Theory Question' : '🚦 Road Sign Question'}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#737686' }}>Q{currentQ + 1}</span>
+            </div>
+
+            <div style={{ padding: '24px' }}>
+              {/* Road sign SVG if symbol question */}
+              {q.type === 'symbol' && q.symbolType && ROAD_SIGNS[q.symbolType] && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20, padding: 20, background: '#f8f9fc', border: '1px dashed #dee2e6', borderRadius: 12 }}>
+                  <div style={{ width: 120, height: 120 }}>
+                    {React.cloneElement(ROAD_SIGNS[q.symbolType], { width: 120, height: 120 })}
+                  </div>
+                </div>
+              )}
+
+              {/* Question text */}
+              <p style={{ fontSize: 16, fontWeight: 700, color: '#111c2d', lineHeight: 1.6, marginBottom: 24 }}>
+                {q.question}
+              </p>
+
+              {/* Options */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {q.options.map((opt, oi) => {
+                  const isSelected = answers[currentQ] === oi;
+                  return (
+                    <button
+                      key={oi}
+                      onClick={() => selectAnswer(currentQ, oi)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 14,
+                        padding: '14px 18px', border: `2px solid ${isSelected ? '#0B2545' : '#dee2e6'}`,
+                        background: isSelected ? '#e7eeff' : '#ffffff',
+                        cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                        transition: 'all 0.15s', borderRadius: 0
+                      }}
+                    >
+                      <span style={{
+                        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 12, fontWeight: 900,
+                        background: isSelected ? '#0B2545' : '#dee2e6',
+                        color: isSelected ? '#ffffff' : '#505f76'
+                      }}>
+                        {String.fromCharCode(65 + oi)}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: isSelected ? 700 : 500, color: isSelected ? '#0B2545' : '#505f76' }}>
+                        {opt}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Navigation buttons */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #dee2e6', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <button
+                onClick={() => setCurrentQ(Math.max(0, currentQ - 1))}
+                disabled={currentQ === 0}
+                style={{ ...css.ghostBtn, opacity: currentQ === 0 ? 0.4 : 1 }}
+                className="ghost-btn"
+              >
+                ← Previous
+              </button>
+              {currentQ < 39 ? (
+                <button onClick={() => setCurrentQ(currentQ + 1)} style={css.primaryBtn} className="accent-btn">
+                  Next →
+                </button>
+              ) : (
+                <button
+                  onClick={handleSubmitTest}
+                  disabled={submitting}
+                  style={{ ...css.primaryBtn, background: '#16a34a' }}
+                >
+                  {submitting ? 'Submitting...' : '✓ Submit Test'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Right Sidebar: Question Navigator */}
+          <div style={{ ...css.card, padding: 16, position: 'sticky', top: 80 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#737686', marginBottom: 12 }}>
+              Question Navigator
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+              {questions.map((_, idx) => {
+                const isAnswered = answers[idx] !== undefined;
+                const isCurrent = idx === currentQ;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentQ(idx)}
+                    style={{
+                      width: '100%', aspectRatio: '1', border: isCurrent ? '2px solid #0B2545' : '1px solid #dee2e6',
+                      background: isCurrent ? '#0B2545' : isAnswered ? '#e7eeff' : '#ffffff',
+                      color: isCurrent ? '#ffffff' : isAnswered ? '#0B2545' : '#737686',
+                      fontSize: 11, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}
+                  >
+                    {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ marginTop: 16, padding: '12px 0', borderTop: '1px solid #dee2e6' }}>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 10, color: '#505f76' }}>
+                <span>🔵 Current</span>
+                <span>🟦 Answered</span>
+                <span>⬜ Unanswered</span>
+              </div>
+            </div>
+
+            {/* Submit button in sidebar too */}
+            <button
+              onClick={handleSubmitTest}
+              disabled={submitting || answeredCount === 0}
+              style={{ ...css.primaryBtn, width: '100%', marginTop: 12, textAlign: 'center', background: answeredCount >= 40 ? '#16a34a' : '#0B2545', opacity: answeredCount === 0 ? 0.5 : 1 }}
+              className="accent-btn"
+            >
+              {submitting ? 'Submitting...' : `Submit (${answeredCount}/40)`}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── REVIEW VIEW ──
+  if (view === 'review' && reviewData) {
+    const { score, total, passed } = reviewData;
+    const percentage = Math.round((score / total) * 100);
+
+    return (
+      <div style={{ maxWidth: 900 }}>
+        <PageHeader title="Test Results" sub={`Mock Test #${String(activeTestNum).padStart(2, '0')} — Review`} />
+
+        {/* Score Card */}
+        <div style={{ ...css.card, padding: 0, marginBottom: 24, overflow: 'hidden' }}>
+          <div style={{ background: passed ? '#16a34a' : '#dc2626', padding: '32px 28px', color: '#fff', textAlign: 'center' }}>
+            <div style={{ fontSize: 60, fontWeight: 900, letterSpacing: '-0.04em' }}>{score}/{total}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, marginTop: 8, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+              {passed ? '🎉 PASSED' : '😞 FAILED'}
+            </div>
+            <div style={{ fontSize: 13, marginTop: 8, opacity: 0.8 }}>
+              {percentage}% · Pass mark: 75% (30/40)
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0 }}>
+            <div style={{ padding: '16px 20px', textAlign: 'center', borderRight: '1px solid #dee2e6' }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: '#737686', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Correct</div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#16a34a' }}>{score}</div>
+            </div>
+            <div style={{ padding: '16px 20px', textAlign: 'center', borderRight: '1px solid #dee2e6' }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: '#737686', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Wrong</div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#dc2626' }}>{total - score}</div>
+            </div>
+            <div style={{ padding: '16px 20px', textAlign: 'center' }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: '#737686', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Skipped</div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#d97706' }}>{total - Object.keys(reviewData.answers).length}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+          <button onClick={backToList} style={css.ghostBtn} className="ghost-btn">← Back to Tests</button>
+          <button onClick={() => startTest(activeTestNum)} style={css.primaryBtn} className="accent-btn">🔄 Retake Test</button>
+        </div>
+
+        {/* Detailed Question Review */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {reviewData.questions.map((q, idx) => {
+            const studentAns = reviewData.answers[idx];
+            const isCorrect = studentAns === q.correct;
+            const wasSkipped = studentAns === undefined;
+
+            return (
+              <div key={idx} style={{ ...css.card, borderLeft: `4px solid ${isCorrect ? '#16a34a' : wasSkipped ? '#d97706' : '#dc2626'}`, padding: 0, overflow: 'hidden' }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f3ff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', padding: '3px 10px', background: q.type === 'theory' ? '#e7eeff' : '#fef3c7', color: q.type === 'theory' ? '#0B2545' : '#92400e', textTransform: 'uppercase' }}>
+                      {q.type === 'theory' ? 'Theory' : 'Road Sign'} · Q{idx + 1}
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: isCorrect ? '#16a34a' : wasSkipped ? '#d97706' : '#dc2626' }}>
+                      {isCorrect ? '✅ Correct' : wasSkipped ? '⏭ Skipped' : '❌ Wrong'}
+                    </span>
+                  </div>
+
+                  {/* Show SVG sign if symbol question */}
+                  {q.type === 'symbol' && q.symbolType && ROAD_SIGNS[q.symbolType] && (
+                    <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0', padding: 12, background: '#f8f9fc', borderRadius: 8 }}>
+                      <div style={{ width: 80, height: 80 }}>
+                        {React.cloneElement(ROAD_SIGNS[q.symbolType], { width: 80, height: 80 })}
+                      </div>
+                    </div>
+                  )}
+
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#111c2d', lineHeight: 1.5, marginBottom: 12 }}>{q.question}</p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {q.options.map((opt, oi) => {
+                      const isStudentChoice = studentAns === oi;
+                      const isCorrectOpt = q.correct === oi;
+                      let bg = '#ffffff'; let border = '#dee2e6'; let color = '#505f76';
+                      if (isCorrectOpt) { bg = '#f0fdf4'; border = '#16a34a'; color = '#16a34a'; }
+                      else if (isStudentChoice && !isCorrect) { bg = '#fef2f2'; border = '#dc2626'; color = '#dc2626'; }
+                      return (
+                        <div key={oi} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: `1px solid ${border}`, background: bg }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, color }}>{String.fromCharCode(65 + oi)}.</span>
+                          <span style={{ fontSize: 12, color, fontWeight: isCorrectOpt || isStudentChoice ? 700 : 400 }}>{opt}</span>
+                          {isCorrectOpt && <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, color: '#16a34a' }}>✓ CORRECT</span>}
+                          {isStudentChoice && !isCorrect && <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, color: '#dc2626' }}>✗ YOUR ANSWER</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Explanation */}
+                <div style={{ padding: '12px 20px', background: '#f8f9fc', fontSize: 12, color: '#505f76', lineHeight: 1.5 }}>
+                  💡 <strong>Explanation:</strong> {q.explanation}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ textAlign: 'center', padding: '32px 0' }}>
+          <button onClick={backToList} style={{ ...css.primaryBtn, padding: '14px 40px' }} className="accent-btn">← Back to All Tests</button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 

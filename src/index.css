@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   /* Core Colors */
@@ -31,6 +35,11 @@
   --radius-lg: 1rem;
   --radius-md: 0.75rem;
   --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Typography Scale */
+  --font-display: 'Plus Jakarta Sans', 'Hanken Grotesk', system-ui, sans-serif;
+  --font-heading: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 * {
@@ -40,11 +49,16 @@
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-body);
   background-color: var(--bg-page);
   color: var(--text-main);
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.6;
+  letter-spacing: -0.009em;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
 }
 
 /* Layout Utilities */
@@ -87,8 +101,10 @@ body {
   justify-content: center;
   padding: 0.75rem 1.5rem;
   border-radius: var(--radius-md);
+  font-family: var(--font-body);
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.005em;
   cursor: pointer;
   transition: var(--transition);
   border: none;
@@ -135,7 +151,9 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--outline-variant);
   border-radius: var(--radius-md);
-  font-size: 1rem;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  letter-spacing: -0.009em;
   transition: var(--transition);
 }
 
@@ -271,4 +289,10 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-image: linear-gradient(135deg, var(--primary) 0%, #3b82f6 100%);
+}
+
+/* Global spinner animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Phone, Mail, ChevronDown } from 'lucide-react';
+import { Menu, X, Phone, Mail, LogOut, LayoutDashboard } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const navLinks = [
   { label: 'Home', path: '/' },
@@ -20,6 +21,24 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { currentUser, userProfile, logout } = useAuth();
+
+  const getDashboardLink = () => {
+    if (!userProfile) return '/login';
+    if (userProfile.role === 'admin') return '/admin';
+    if (userProfile.role === 'instructor') return '/instructor';
+    return '/student';
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -27,6 +46,7 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMobileOpen(false), [location.pathname]);
 
   return (
@@ -75,14 +95,31 @@ export default function Navbar() {
 
             {/* CTA Buttons */}
             <div className="hidden md:flex items-center gap-2">
-              <Link to="/login"
-                className="px-4 py-2 text-sm font-semibold text-gray-700 hover:text-primary transition-colors">
-                Login
-              </Link>
-              <Link to="/register"
-                className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-primary/50 hover:bg-orange-600 transition-colors shadow-md shadow-orange-500/30">
-                Register Free
-              </Link>
+              {currentUser ? (
+                <>
+                  <Link to={getDashboardLink()}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-primary hover:bg-primary-hover transition-colors shadow-md shadow-orange-500/30 flex items-center gap-2">
+                    <LayoutDashboard size={16} />
+                    Dashboard
+                  </Link>
+                  <button onClick={handleLogout}
+                    className="px-4 py-2 text-sm font-semibold text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-2">
+                    <LogOut size={16} />
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link to="/login"
+                    className="px-4 py-2 text-sm font-semibold text-gray-700 hover:text-primary transition-colors">
+                    Login
+                  </Link>
+                  <Link to="/register"
+                    className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-primary/50 hover:bg-orange-600 transition-colors shadow-md shadow-orange-500/30">
+                    Register Free
+                  </Link>
+                </>
+              )}
             </div>
 
             {/* Mobile Hamburger */}
@@ -107,12 +144,27 @@ export default function Navbar() {
                   </Link>
                 ))}
                 <div className="pt-3 border-t border-gray-100 flex flex-col gap-2">
-                  <Link to="/login" className="block text-center px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-700 border border-gray-200 hover:border-orange-300">
-                    Login
-                  </Link>
-                  <Link to="/register" className="block text-center px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary/50 hover:bg-orange-600">
-                    Register Free
-                  </Link>
+                  {currentUser ? (
+                    <>
+                      <Link to={getDashboardLink()} className="block text-center px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary hover:bg-primary-hover flex items-center justify-center gap-2">
+                        <LayoutDashboard size={18} />
+                        Go to Dashboard
+                      </Link>
+                      <button onClick={handleLogout} className="w-full text-center px-4 py-2.5 rounded-xl text-sm font-semibold text-red-600 border border-red-100 hover:bg-red-50 flex items-center justify-center gap-2">
+                        <LogOut size={18} />
+                        Sign Out
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link to="/login" className="block text-center px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-700 border border-gray-200 hover:border-orange-300">
+                        Login
+                      </Link>
+                      <Link to="/register" className="block text-center px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary/50 hover:bg-orange-600">
+                        Register Free
+                      </Link>
+                    </>
+                  )}
                 </div>
               </nav>
             </motion.div>

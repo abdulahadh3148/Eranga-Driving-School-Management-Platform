@@ -1,26 +1,17 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { db } from '../../firebase/config';
 import { collection, query, getDocs, where } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
-import { Users, Phone, Mail, Award, CheckCircle, GraduationCap } from 'lucide-react';
-
-const colors = {
-  bg: '#090c12',
-  surface: '#0e1420',
-  surface2: '#131a2a',
-  border: '#1c2540',
-  green: '#00e676',
-  greenGlow: 'rgba(0,230,118,0.18)',
-  amber: '#ffab00',
-  text: '#f0f0f0',
-  muted: '#5a6a7a',
-};
+import { Users, Phone, Search, Eye, Calendar } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import './MyStudents.css';
 
 export default function MyStudents() {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     if (!currentUser) return;
@@ -37,10 +28,26 @@ export default function MyStudents() {
           return;
         }
 
-        // Fetch student profiles
-        const stuQ = query(collection(db, 'users'), where('__name__', 'in', studentIds));
-        const stuSnap = await getDocs(stuQ);
-        setStudents(stuSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        const batchSize = 30;
+        const allStudents = [];
+        for (let i = 0; i < studentIds.length; i += batchSize) {
+          const batch = studentIds.slice(i, i + batchSize);
+          const stuQ = query(collection(db, 'users'), where('__name__', 'in', batch));
+          const stuSnap = await getDocs(stuQ);
+          stuSnap.docs.forEach(d => {
+            // Find recent booking to get vehicle & status info if possible
+            const studentBookings = bookSnap.docs.filter(b => b.data().studentId === d.id).map(b => b.data());
+            const latestBooking = studentBookings.sort((a,b) => new Date(b.date) - new Date(a.date))[0];
+            
+            allStudents.push({ 
+              id: d.id, 
+              ...d.data(),
+              vehicle: latestBooking?.vehicleType || 'Car',
+              status: d.data().role === 'student' ? 'ongoing' : 'completed'
+            });
+          });
+        }
+        setStudents(allStudents);
       } catch (err) {
         console.error(err);
       } finally {
@@ -50,93 +57,88 @@ export default function MyStudents() {
     fetchStudents();
   }, [currentUser]);
 
-  return (
-    <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: colors.text, fontFamily: "'Barlow Condensed', sans-serif" }}>My Students</h1>
-        <p style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>Students you are instructing or have instructed.</p>
-      </motion.div>
+  const filteredStudents = students.filter(s => {
+    const term = searchTerm.toLowerCase();
+    return (s.name || '').toLowerCase().includes(term) || (s.phone || '').includes(term);
+  });
 
-      {loading ? (
-        <div style={{ padding: 48, textAlign: 'center' }}>
-          <div style={{ width: 32, height: 32, border: `3px solid ${colors.green}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }} />
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+  if (loading) {
+    return <div className="students-loading">Loading students...</div>;
+  }
+
+  return (
+    <div className="students-page-wrapper">
+      <h1 className="students-page-title">My Students</h1>
+      <p className="students-page-subtitle">Quickly view and contact your assigned students.</p>
+
+      {/* Search Bar */}
+      <div className="students-search-container">
+        <Search size={18} className="students-search-icon" />
+        <input 
+          type="text" 
+          className="students-search-input" 
+          placeholder="Search by name or phone number..." 
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      {students.length === 0 ? (
+        <div className="students-empty">
+          <Users size={40} color="#d1d5db" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+          <div>No students assigned yet.</div>
         </div>
-      ) : students.length === 0 ? (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          style={{ background: colors.surface, borderRadius: 20, border: `1px solid ${colors.border}`, padding: 48, textAlign: 'center' }}>
-          <Users size={48} color={colors.border} style={{ margin: '0 auto 16px', display: 'block' }} />
-          <p style={{ color: colors.muted, fontSize: 15 }}>No students assigned yet.</p>
-        </motion.div>
+      ) : filteredStudents.length === 0 ? (
+        <div className="students-empty">
+          <div>No students match your search.</div>
+        </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {students.map((s, i) => (
-            <motion.div key={s.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-              style={{
-                background: colors.surface, borderRadius: 20, border: `1px solid ${colors.border}`,
-                padding: 20, display: 'flex', flexDirection: 'column', gap: 14, position: 'relative', overflow: 'hidden'
-              }}
-              whileHover={{ borderColor: 'rgba(0, 230, 118, 0.35)', boxShadow: '0 4px 24px rgba(0, 230, 118, 0.06)' }}
-            >
-              {/* Header block */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{
-                  width: 44, height: 44, borderRadius: 12, background: 'rgba(0, 230, 118, 0.12)', border: '1px solid rgba(0, 230, 118, 0.2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800, color: colors.green,
-                  fontFamily: "'Barlow Condensed', sans-serif"
-                }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {filteredStudents.map(s => (
+            <div key={s.id} className="student-page-card" onClick={() => navigate(`/instructor/students/${s.id}`)}>
+              {/* Top: Avatar + Name */}
+              <div className="student-card-top">
+                <div className="student-avatar">
                   {s.name?.charAt(0).toUpperCase() || 'S'}
                 </div>
                 <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: colors.text, margin: 0 }}>{s.name || 'Student'}</h3>
-                  <span style={{ fontSize: 11, color: colors.muted, display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                    <Award size={10} color={colors.amber} /> {s.packageId || 'Standard Package'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div style={{ margin: '4px 0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 600, color: colors.muted, marginBottom: 6 }}>
-                  <span>TRAINING PROGRESS</span>
-                  <span style={{ color: colors.green }}>{s.progress || 0}%</span>
-                </div>
-                <div style={{ height: 6, width: '100%', borderRadius: 3, background: colors.surface2, overflow: 'hidden', border: `1px solid ${colors.border}` }}>
-                  <div style={{ height: '100%', borderRadius: 3, background: colors.green, width: `${s.progress || 0}%`, boxShadow: `0 0 10px ${colors.greenGlow}` }} />
-                </div>
-              </div>
-
-              {/* Contact info list */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: `1px solid ${colors.border}`, paddingTop: 12, fontSize: 13, color: colors.muted }}>
-                {s.phone && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Phone size={12} />
-                    <span style={{ color: colors.text }}>{s.phone}</span>
+                  <div className="student-card-name">{s.name || 'Student'}</div>
+                  <div className="student-card-package">
+                    <Phone size={12} color="#6b7280" /> {s.phone || 'No phone'}
                   </div>
+                </div>
+              </div>
+
+              {/* Tags Row */}
+              <div className="student-tags-row">
+                <span className="student-tag tag-gray">{s.packageId || 'Standard Level'}</span>
+                <span className="student-tag tag-gray">{s.vehicle || 'Car'}</span>
+                <span className={`student-tag ${s.status === 'completed' ? 'tag-completed' : 'tag-ongoing'}`}>
+                  {s.status}
+                </span>
+              </div>
+
+              {/* Actions Row */}
+              <div className="student-actions-row" onClick={e => e.stopPropagation()}>
+                {s.phone && (
+                  <a href={`tel:${s.phone}`} className="student-action-btn btn-call">
+                    <Phone size={16} /> Call
+                  </a>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Mail size={12} />
-                  <span style={{ color: colors.text, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: 220 }}>
-                    {s.email}
-                  </span>
-                </div>
+                <button 
+                  className="student-action-btn btn-view"
+                  onClick={() => navigate(`/instructor/students/${s.id}`)}
+                >
+                  <Eye size={16} /> View Details
+                </button>
+                <button 
+                  className="student-action-btn btn-view"
+                  onClick={() => navigate(`/instructor/schedule`)}
+                >
+                  <Calendar size={16} /> Schedule
+                </button>
               </div>
-
-              {/* Extra stats */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, background: colors.surface2, borderRadius: 12, padding: '10px 12px', border: `1px solid ${colors.border}`, marginTop: 'auto' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <CheckCircle size={14} color={colors.green} />
-                  <span style={{ fontSize: 12, color: colors.text, fontWeight: 600 }}>{s.classesCompleted || 0} Finished</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <GraduationCap size={14} color={colors.amber} />
-                  <span style={{ fontSize: 12, color: colors.text, fontWeight: 600 }}>
-                    {s.role === 'student' ? 'Active' : 'Graduated'}
-                  </span>
-                </div>
-              </div>
-
-            </motion.div>
+            </div>
           ))}
         </div>
       )}

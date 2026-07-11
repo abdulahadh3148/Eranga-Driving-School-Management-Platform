@@ -1,168 +1,205 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase/config';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-import { useAuth } from '../../context/AuthContext';
-import { CalendarDays, Clock, CheckCircle, XCircle, ChevronRight, User, Car, Play } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-
-const colors = {
-  bg: '#090c12',
-  surface: '#0e1420',
-  surface2: '#131a2a',
-  border: '#1c2540',
-  green: '#00e676',
-  greenGlow: 'rgba(0,230,118,0.18)',
-  amber: '#ffab00',
-  amberGlow: 'rgba(255,171,0,0.18)',
-  red: '#ff5252',
-  redGlow: 'rgba(255,82,82,0.15)',
-  text: '#f0f0f0',
-  muted: '#5a6a7a',
-};
+import { Clock, User, Car, Play, CheckCircle2, XCircle } from 'lucide-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import './MySchedule.css';
 
 export default function MySchedule() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+
+  // Date States
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dateType, setDateType] = useState('today'); // 'today', 'tomorrow', 'custom'
+
+  // Data States
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Set selectedDate based on type
   useEffect(() => {
-    if (!currentUser) return;
-    const q = query(collection(db, 'bookings'), where('instructorId', '==', currentUser.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      data.sort((a, b) => new Date(a.date) - new Date(b.date));
-      setSessions(data);
+    const d = new Date();
+    if (dateType === 'today') {
+      setSelectedDate(d.toISOString().split('T')[0]);
+    } else if (dateType === 'tomorrow') {
+      d.setDate(d.getDate() + 1);
+      setSelectedDate(d.toISOString().split('T')[0]);
+    }
+  }, [dateType]);
+
+  // Fetch Schedule (Auto Refresh via onSnapshot)
+  useEffect(() => {
+    if (!currentUser?.uid || !selectedDate) return;
+
+    setLoading(true);
+    const q = query(
+      collection(db, 'sessions'),
+      where('instructorId', '==', currentUser.uid),
+      where('date', '==', selectedDate)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedSessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Sort by time
+      fetchedSessions.sort((a, b) => {
+        const timeA = a.time || '00:00';
+        const timeB = b.time || '00:00';
+        return timeA.localeCompare(timeB);
+      });
+
+      setSessions(fetchedSessions);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching schedule:", error);
       setLoading(false);
     });
-    return unsub;
-  }, [currentUser]);
 
-  const upcoming = sessions.filter(s => s.status === 'confirmed' || s.status === 'pending');
+    return () => unsubscribe();
+  }, [currentUser, selectedDate]);
 
-  const handleStatusUpdate = async (id, status, e) => {
-    e.stopPropagation(); // Avoid triggering row navigation
+  // Action Handlers
+  const handleUpdateStatus = async (sessionId, newStatus) => {
+    // Confirmation for "Missed"
+    if (newStatus === 'missed' || newStatus === 'cancelled') {
+      if (!window.confirm("Are you sure this student MISSED the session?")) return;
+    }
+
     try {
-      await updateDoc(doc(db, 'bookings', id), { status });
+      const sessionRef = doc(db, 'sessions', sessionId);
+      await updateDoc(sessionRef, { status: newStatus });
+      // UI updates automatically because of onSnapshot!
     } catch (err) {
-      console.error(err);
+      console.error("Error updating status:", err);
+      alert("Failed to update status. Please try again.");
     }
   };
 
-  const getStatusStyle = (status) => {
-    if (status === 'confirmed') {
-      return { bg: colors.greenGlow, color: colors.green, border: 'rgba(0,230,118,0.3)' };
-    }
-    return { bg: colors.amberGlow, color: colors.amber, border: 'rgba(255,171,0,0.3)' };
+
+
+  // UI Helpers
+  const getBadgeClass = (status) => {
+    const s = (status || '').toLowerCase();
+    if (s === 'completed') return 'badge-completed';
+    if (s === 'cancelled' || s === 'missed') return 'badge-missed';
+    return 'badge-upcoming';
+  };
+
+  const getBadgeText = (status) => {
+    const s = (status || '').toLowerCase();
+    if (s === 'completed') return 'Completed';
+    if (s === 'cancelled' || s === 'missed') return 'Missed';
+    return 'Upcoming';
   };
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: colors.text, fontFamily: "'Barlow Condensed', sans-serif" }}>My Schedule</h1>
-        <p style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>Manage and confirm practical training sessions.</p>
-      </motion.div>
+    <div className="schedule-page-wrapper">
+      <h1 className="schedule-page-title">My Schedule</h1>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-        style={{ background: colors.surface, borderRadius: 20, border: `1px solid ${colors.border}`, overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: 48, textAlign: 'center' }}>
-            <div style={{ width: 32, height: 32, border: `3px solid ${colors.green}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }} />
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          </div>
-        ) : upcoming.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center' }}>
-            <CalendarDays size={48} color={colors.border} style={{ margin: '0 auto 16px', display: 'block' }} />
-            <p style={{ color: colors.muted, fontSize: 15 }}>No upcoming sessions scheduled.</p>
-          </div>
-        ) : (
-          <div>
-            {upcoming.map((s, i) => {
-              const statusStyle = getStatusStyle(s.status);
-              return (
-                <motion.div key={s.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
-                  onClick={() => navigate(`/instructor/sessions?id=${s.id}`)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
-                    cursor: 'pointer', transition: 'background 0.2s ease', flexWrap: 'wrap', gap: 16
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = colors.surface2}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 200 }}>
-                    {/* Date Block */}
-                    <div style={{
-                      width: 48, height: 48, borderRadius: 12, background: colors.surface2,
-                      border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', justifyContent: 'center'
-                    }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: colors.green, textTransform: 'uppercase' }}>
-                        {new Date(s.date).toLocaleDateString('en-US', { month: 'short' })}
-                      </span>
-                      <span style={{ fontSize: 18, fontWeight: 900, color: colors.text, lineHeight: 1, fontFamily: "'Barlow Condensed', sans-serif" }}>
-                        {new Date(s.date).getDate()}
-                      </span>
-                    </div>
+      {/* ─── Date Selector ─── */}
+      <div className="date-selector-container">
+        <button 
+          className={`date-btn ${dateType === 'today' ? 'active' : ''}`}
+          onClick={() => setDateType('today')}
+        >
+          Today
+        </button>
+        <button 
+          className={`date-btn ${dateType === 'tomorrow' ? 'active' : ''}`}
+          onClick={() => setDateType('tomorrow')}
+        >
+          Tomorrow
+        </button>
+        <div className="date-picker-wrapper">
+          <DatePicker
+            selected={selectedDate ? new Date(selectedDate + 'T00:00:00') : new Date()}
+            onChange={(d) => {
+              if (d) {
+                const offset = d.getTimezoneOffset();
+                const local = new Date(d.getTime() - (offset * 60 * 1000));
+                setSelectedDate(local.toISOString().split('T')[0]);
+                setDateType('custom');
+              }
+            }}
+            customInput={
+              <input className={`date-picker-input ${dateType === 'custom' ? 'active' : ''}`} />
+            }
+            dateFormat="yyyy-MM-dd"
+            placeholderText="Pick a date"
+          />
+        </div>
+      </div>
 
-                    <div>
-                      <p style={{ fontWeight: 700, color: colors.text, fontSize: 15 }}>{s.studentName || 'Student'}</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                        <Clock size={12} color={colors.muted} />
-                        <span style={{ fontSize: 12, color: colors.muted }}>{s.timeSlot}</span>
-                        <span style={{ color: colors.border }}>•</span>
-                        <span style={{ fontSize: 11, color: colors.green, fontWeight: 600 }}>{s.vehicleType || s.vehicleId || 'Manual'}</span>
-                      </div>
-                    </div>
+      {/* ─── Schedule List ─── */}
+      {loading ? (
+        <div className="schedule-loading">Loading sessions...</div>
+      ) : sessions.length === 0 ? (
+        <div className="schedule-empty">No sessions for this day.</div>
+      ) : (
+        <div className="schedule-list">
+          {sessions.map(s => {
+            const isCompleted = s.status === 'completed';
+            const isMissed = s.status === 'cancelled' || s.status === 'missed';
+            const isUpcoming = !isCompleted && !isMissed;
+
+            return (
+              <div key={s.id} className="schedule-card">
+                
+                <div className="schedule-card-header">
+                  <div className="schedule-time">
+                    <Clock size={20} color="var(--primary)" />
+                    {s.time || 'N/A'}
                   </div>
+                  <div className={`schedule-badge ${getBadgeClass(s.status)}`}>
+                    {getBadgeText(s.status)}
+                  </div>
+                </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }} onClick={e => e.stopPropagation()}>
-                    <span style={{
-                      padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700,
-                      background: statusStyle.bg, color: statusStyle.color, border: `1px solid ${statusStyle.border}`,
-                      textTransform: 'uppercase'
-                    }}>
-                      {s.status}
+                <div className="schedule-card-body">
+                  <div className="schedule-student">{s.studentName || 'Student Name'}</div>
+                  <div className="schedule-details">
+                    <span className="schedule-detail-item">
+                      <Car size={16} /> {s.vehicleType || s.vehicle || 'Any Vehicle'}
                     </span>
-
-                    {/* Pending Confirmation Actions */}
-                    {s.status === 'pending' && (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={(e) => handleStatusUpdate(s.id, 'confirmed', e)}
-                          style={{ width: 32, height: 32, borderRadius: 8, background: colors.greenGlow, border: '1px solid rgba(0,230,118,0.2)', color: colors.green, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          title="Confirm booking">
-                          <CheckCircle size={16} />
-                        </button>
-                        <button onClick={(e) => handleStatusUpdate(s.id, 'cancelled', e)}
-                          style={{ width: 32, height: 32, borderRadius: 8, background: colors.redGlow, border: '1px solid rgba(255,82,82,0.2)', color: colors.red, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          title="Cancel booking">
-                          <XCircle size={16} />
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Confirmed / Active quick link */}
-                    {s.status === 'confirmed' && (
-                      <button onClick={() => navigate(`/instructor/active-session?id=${s.id}`)}
-                        style={{
-                          height: 32, padding: '0 12px', borderRadius: 8, background: colors.green, border: 'none',
-                          color: '#000', fontSize: 11, fontWeight: 800, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'Barlow Condensed', sans-serif"
-                        }}>
-                        <Play size={10} fill="#000" /> START
-                      </button>
-                    )}
-
-                    <ChevronRight size={16} color={colors.muted} />
+                    <span>•</span>
+                    <span className="schedule-detail-item">
+                      {s.sessionType || s.lessonType || 'Standard Training'}
+                    </span>
                   </div>
+                </div>
 
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
-      </motion.div>
+                {/* Only show actions if session is upcoming/pending */}
+                {isUpcoming && (
+                  <div className="schedule-actions">
+                    <button 
+                      className="action-btn btn-start"
+                      onClick={() => navigate(`/instructor/active-session?id=${s.id}`)}
+                    >
+                      <Play size={18} /> Start
+                    </button>
+                    <button 
+                      className="action-btn btn-complete"
+                      onClick={() => handleUpdateStatus(s.id, 'completed')}
+                    >
+                      <CheckCircle2 size={18} /> Complete
+                    </button>
+                    <button 
+                      className="action-btn btn-missed"
+                      onClick={() => handleUpdateStatus(s.id, 'missed')}
+                    >
+                      <XCircle size={18} /> Missed
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

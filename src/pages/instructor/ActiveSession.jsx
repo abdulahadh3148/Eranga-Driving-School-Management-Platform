@@ -1,825 +1,366 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../../firebase/config';
-import { doc, getDoc, updateDoc, addDoc, collection, increment } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import {
-  ArrowLeft, Play, Pause, CheckCircle, CheckCircle2,
-  Star, Clock, AlertTriangle, Loader2
+import { createSessionProgress } from '../../firebase/helpers';
+import { 
+  ArrowLeft, Play, Pause, XCircle, CheckCircle2,
+  Car, Clock, GraduationCap
 } from 'lucide-react';
+import './ActiveSession.css';
 
-// ─── Theme Constants ───────────────────────────────────────────
-const COLORS = {
-  bg: 'transparent',
-  card: '#0e1420',
-  cardBorder: '#1c2540',
-  green: '#00e676',
-  greenDim: 'rgba(0,230,118,0.12)',
-  amber: '#ffab00',
-  amberDim: 'rgba(255,171,0,0.12)',
-  red: '#ff5252',
-  redDim: 'rgba(255,82,82,0.12)',
-  text: '#f0f0f0',
-  muted: '#5a6a7a',
-  inputBg: '#0a0f18',
-  inputBorder: '#1c2540',
-  ring: '#1a2236',
-};
-
-const SKILLS = [
-  'Steering', 'Clutch Control', 'Braking', 'Parking',
-  'Observation', 'Hill Start', 'Reversing', 'Emergency Stop',
-];
-
-// ─── Helpers ───────────────────────────────────────────────────
-const pad = (n) => String(n).padStart(2, '0');
-const formatTime = (totalSeconds) => {
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
-};
-
-// ─── SVG Progress Ring ─────────────────────────────────────────
-function ProgressRing({ percent }) {
-  const radius = 54;
-  const stroke = 7;
-  const normalizedRadius = radius - stroke / 2;
-  const circumference = 2 * Math.PI * normalizedRadius;
-  const offset = circumference - (percent / 100) * circumference;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '24px 0 8px' }}>
-      <svg height={radius * 2} width={radius * 2} style={{ transform: 'rotate(-90deg)' }}>
-        {/* Background ring */}
-        <circle
-          stroke={COLORS.ring}
-          fill="transparent"
-          strokeWidth={stroke}
-          r={normalizedRadius}
-          cx={radius}
-          cy={radius}
-        />
-        {/* Progress ring */}
-        <motion.circle
-          stroke={COLORS.green}
-          fill="transparent"
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          r={normalizedRadius}
-          cx={radius}
-          cy={radius}
-          initial={{ strokeDashoffset: circumference }}
-          animate={{ strokeDashoffset: offset }}
-          transition={{ duration: 0.6, ease: 'easeInOut' }}
-          style={{ strokeDasharray: circumference }}
-        />
-      </svg>
-      {/* Percentage label in center */}
-      <div style={{
-        marginTop: -(radius + 18),
-        fontSize: 22,
-        fontWeight: 800,
-        color: percent === 100 ? COLORS.green : COLORS.text,
-        letterSpacing: '-0.5px',
-        height: radius * 2,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-        {Math.round(percent)}%
-      </div>
-      <p style={{ color: COLORS.muted, fontSize: 13, marginTop: 2, fontWeight: 500 }}>
-        Skills Completed
-      </p>
-    </div>
-  );
-}
-
-// ─── Star Rating ───────────────────────────────────────────────
-function StarRating({ value, onChange }) {
-  const [hovered, setHovered] = useState(0);
-
-  return (
-    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <motion.button
-          key={star}
-          type="button"
-          whileTap={{ scale: 0.85 }}
-          whileHover={{ scale: 1.18 }}
-          onMouseEnter={() => setHovered(star)}
-          onMouseLeave={() => setHovered(0)}
-          onClick={() => onChange(star)}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 4,
-            display: 'flex',
-            alignItems: 'center',
-          }}
-          aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
-        >
-          <Star
-            size={36}
-            fill={(hovered || value) >= star ? COLORS.amber : '#2a3040'}
-            color={(hovered || value) >= star ? COLORS.amber : '#2a3040'}
-            strokeWidth={1.5}
-          />
-        </motion.button>
-      ))}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ─── MAIN COMPONENT ──────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════
 export default function ActiveSession() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const bookingId = searchParams.get('id');
+  const sessionId = searchParams.get('id');
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
 
-  // ── Data state ──
-  const [booking, setBooking] = useState(null);
+  const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // ── Timer state ──
-  const [seconds, setSeconds] = useState(0);
-  const [running, setRunning] = useState(false);
-  const [timerStarted, setTimerStarted] = useState(false);
-  const [sessionStartTime, setSessionStartTime] = useState(null);
-  const intervalRef = useRef(null);
+  // Live state
+  const [status, setStatus] = useState('not-started'); // not-started, ongoing, paused
+  const [elapsed, setElapsed] = useState(0); // in seconds
+  const timerRef = useRef(null);
 
-  // ── Skills state ──
-  const [checkedSkills, setCheckedSkills] = useState({});
-
-  // ── Feedback state ──
-  const [rating, setRating] = useState(0);
-  const [feedback, setFeedback] = useState('');
-  const MAX_CHARS = 500;
-
-  // ── Submit state ──
+  // Progress & Notes
+  const [skills, setSkills] = useState([]); // Dynamic skills from package
+  const [checkedSkills, setCheckedSkills] = useState([]);
+  const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  // ── Fetch booking on mount ──
-  useEffect(() => {
-    if (!currentUser) return;
+  // Attendance & Performance
+  const [attendance, setAttendance] = useState('present');
+  const [performance, setPerformance] = useState('Good');
 
-    if (!bookingId) {
-      setError('No session ID provided. Please go back and select a session.');
+  // Load session and package skills
+  useEffect(() => {
+    if (!currentUser || !sessionId) {
+      if (!sessionId) setError('No session selected.');
       setLoading(false);
       return;
     }
 
-    const fetchBooking = async () => {
+    const fetchSession = async () => {
       try {
-        const docSnap = await getDoc(doc(db, 'bookings', bookingId));
-        if (!docSnap.exists()) {
-          setError('Session not found. The booking may have been deleted.');
-          setLoading(false);
-          return;
+        const docSnap = await getDoc(doc(db, 'sessions', sessionId));
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.instructorId !== currentUser.uid) {
+            setError('You do not have permission for this session.');
+          } else {
+            setSession({ id: docSnap.id, ...data });
+            
+            // Fetch the student's combo package to get the exact skills to track
+            if (data.studentPackageId) {
+              const pkgSnap = await getDoc(doc(db, 'student_packages', data.studentPackageId));
+              if (pkgSnap.exists()) {
+                 const pkgData = pkgSnap.data();
+                 if (pkgData.skills) {
+                   setSkills(pkgData.skills.map(s => s.name));
+                 }
+              }
+            } else {
+               // Fallback if somehow old session
+               setSkills(['Clutch Control', 'Forward Driving', 'Reverse', 'Turning']);
+            }
+
+            // Pre-fill existing data if session was already ongoing
+            if (data.status === 'ongoing') setStatus('ongoing');
+            if (data.progressStep) setCheckedSkills(data.progressStep);
+            if (data.instructorNotes) setNotes(data.instructorNotes);
+            if (data.elapsedSeconds) setElapsed(data.elapsedSeconds);
+          }
+        } else {
+          setError('Session not found.');
         }
-        const data = docSnap.data();
-        if (data.instructorId !== currentUser.uid) {
-          setError('Access denied. This session belongs to another instructor.');
-          setLoading(false);
-          return;
-        }
-        setBooking({ id: docSnap.id, ...data });
       } catch (err) {
-        console.error('Error fetching booking:', err);
-        setError('Failed to load session data. Please try again.');
+        console.error(err);
+        setError('Error loading session.');
       } finally {
         setLoading(false);
       }
     };
+    fetchSession();
+  }, [currentUser, sessionId]);
 
-    fetchBooking();
-  }, [currentUser, bookingId]);
-
-  // ── Timer logic ──
+  // Timer logic
   useEffect(() => {
-    if (running) {
-      intervalRef.current = setInterval(() => {
-        setSeconds((prev) => prev + 1);
+    if (status === 'ongoing') {
+      timerRef.current = setInterval(() => {
+        setElapsed(prev => prev + 1);
       }, 1000);
+    } else {
+      clearInterval(timerRef.current);
     }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [running]);
+    return () => clearInterval(timerRef.current);
+  }, [status]);
 
-  const toggleTimer = useCallback(() => {
-    if (!running && !timerStarted) {
-      setTimerStarted(true);
-      setSessionStartTime(new Date());
+  // Format timer (MM:SS)
+  const formatTime = (totalSeconds) => {
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  // Actions
+  const handleStart = async () => {
+    setStatus('ongoing');
+    try {
+      await updateDoc(doc(db, 'sessions', sessionId), { status: 'ongoing' });
+    } catch (e) {
+      console.error(e);
     }
-    setRunning((prev) => !prev);
-  }, [running, timerStarted]);
+  };
 
-  // ── Skills toggle ──
-  const toggleSkill = useCallback((skill) => {
-    setCheckedSkills((prev) => ({ ...prev, [skill]: !prev[skill] }));
-  }, []);
+  const handlePause = async () => {
+    setStatus('paused');
+    try {
+      await updateDoc(doc(db, 'sessions', sessionId), { 
+        elapsedSeconds: elapsed 
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
-  const checkedCount = Object.values(checkedSkills).filter(Boolean).length;
-  const skillPercent = (checkedCount / SKILLS.length) * 100;
-  const canComplete = timerStarted && checkedCount >= 1 && !submitting;
+  const handleCancel = async () => {
+    if (!window.confirm('Are you sure you want to cancel this session?')) return;
+    setStatus('not-started');
+    try {
+      await updateDoc(doc(db, 'sessions', sessionId), { status: 'cancelled' });
+      navigate('/instructor/schedule');
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
-  // ── Complete session ──
+  const toggleSkill = (skill) => {
+    setCheckedSkills(prev =>
+      prev.includes(skill) ? prev.filter(s => s !== skill) : [...prev, skill]
+    );
+  };
+
   const handleComplete = async () => {
-    if (!canComplete || !booking) return;
+    if (checkedSkills.length === 0 && !window.confirm('Complete session without checking any skills?')) return;
+    if (!attendance) { alert('Please select attendance.'); return; }
+    if (!performance) { alert('Please select performance rating.'); return; }
+
     setSubmitting(true);
-
-    // Pause the timer
-    setRunning(false);
-
-    const completedSkills = SKILLS.filter((s) => checkedSkills[s]);
+    setStatus('paused');
 
     try {
-      // 1. Update booking document
-      await updateDoc(doc(db, 'bookings', booking.id), {
-        status: 'completed',
-        instructorNotes: feedback,
-        rating: rating,
-        skillsChecked: completedSkills,
-        duration: seconds,
-        completedAt: new Date().toISOString(),
+      // Build skills map: each skill → true/false
+      const skillsMap = {};
+      skills.forEach(skill => {
+        skillsMap[skill] = checkedSkills.includes(skill);
       });
 
-      // 2. Increment student's classesCompleted and progress
-      if (booking.studentId) {
-        await updateDoc(doc(db, 'users', booking.studentId), {
-          classesCompleted: increment(1),
-          progress: increment(5),
-        });
-      }
+      // Create session_progress record via helper
+      await createSessionProgress({
+        studentId: session?.studentId,
+        instructorId: currentUser.uid,
+        sessionId: sessionId,
+        studentPackageId: session?.studentPackageId,
+        date: session?.date || new Date().toISOString().split('T')[0],
+        attendance,
+        skills: skillsMap,
+        performance,
+        notes,
+      });
 
-      // 3. Create notification for the student
-      if (booking.studentId) {
-        await addDoc(collection(db, 'notifications'), {
-          userId: booking.studentId,
-          studentId: booking.studentId,
-          title: 'Session Completed',
-          message: `Your ${booking.sessionType || 'driving'} session on ${booking.date} (${booking.timeSlot}) has been marked as completed. ${rating ? `Rating: ${rating}/5 ⭐` : ''}`,
-          body: `Your ${booking.sessionType || 'driving'} session on ${booking.date} has been completed by your instructor.`,
-          type: 'booking',
-          icon: '🎓',
-          isRead: false,
-          unread: true,
-          date: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-        });
-      }
+      // Update Session Document status to completed
+      await updateDoc(doc(db, 'sessions', sessionId), {
+        status: 'completed',
+        completedAt: new Date().toISOString()
+      });
 
       setSuccess(true);
-      setTimeout(() => navigate('/instructor'), 2500);
+      setTimeout(() => navigate('/instructor/schedule'), 2000);
     } catch (err) {
-      console.error('Error completing session:', err);
-      alert('Failed to complete session. Please try again.');
+      console.error(err);
+      alert(err.message || 'Failed to complete session.');
       setSubmitting(false);
     }
   };
 
-  // ── Card style helper ──
-  const cardStyle = {
-    background: COLORS.card,
-    border: `1px solid ${COLORS.cardBorder}`,
-    borderRadius: 16,
-    padding: '24px',
-  };
+  // Render Loading / Error
+  if (loading) return <div className="as-loading">Loading live session...</div>;
+  if (error) return (
+    <div className="as-error-card">
+      <h2 style={{color: '#991b1b', fontSize: '1.2rem', marginBottom: '1rem'}}>Error</h2>
+      <p style={{color: '#6b7280'}}>{error}</p>
+      <button onClick={() => navigate('/instructor/schedule')} 
+        style={{marginTop: '1.5rem', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', border: 'none', background: '#f3f4f6', cursor: 'pointer', fontWeight: 600}}>
+        Go Back
+      </button>
+    </div>
+  );
 
-  // ═══════════════════════════════════════════════════════════════
-  // ─── LOADING STATE ─────────────────────────────────────────────
-  // ═══════════════════════════════════════════════════════════════
-  if (loading) {
-    return (
-      <div style={{
-        minHeight: '80vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-        >
-          <Loader2 size={36} color={COLORS.green} />
-        </motion.div>
-      </div>
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // ─── ERROR STATE ──────────────────────────────────────────────
-  // ═══════════════════════════════════════════════════════════════
-  if (error) {
-    return (
-      <div style={{
-        minHeight: '80vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-      }}>
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          style={{
-            ...cardStyle,
-            maxWidth: 420,
-            textAlign: 'center',
-          }}
-        >
-          <AlertTriangle size={48} color={COLORS.amber} style={{ margin: '0 auto 16px' }} />
-          <h2 style={{ color: COLORS.text, fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-            Something went wrong
-          </h2>
-          <p style={{ color: COLORS.muted, fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-            {error}
-          </p>
-          <button
-            onClick={() => navigate('/instructor')}
-            style={{
-              background: COLORS.greenDim,
-              color: COLORS.green,
-              border: `1px solid ${COLORS.green}33`,
-              borderRadius: 12,
-              padding: '12px 28px',
-              fontWeight: 700,
-              fontSize: 14,
-              cursor: 'pointer',
-            }}
-          >
-            Back to Dashboard
-          </button>
-        </motion.div>
-      </div>
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // ─── SUCCESS STATE ────────────────────────────────────────────
-  // ═══════════════════════════════════════════════════════════════
+  // Render Success Screen
   if (success) {
     return (
-      <div style={{
-        minHeight: '80vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-      }}>
-        <motion.div
-          initial={{ opacity: 0, scale: 0.85 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-          style={{
-            ...cardStyle,
-            maxWidth: 420,
-            textAlign: 'center',
-          }}
-        >
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2, type: 'spring', stiffness: 260, damping: 15 }}
-          >
-            <CheckCircle2 size={64} color={COLORS.green} style={{ margin: '0 auto 20px' }} />
-          </motion.div>
-          <h2 style={{ color: COLORS.text, fontSize: 22, fontWeight: 800, marginBottom: 8 }}>
-            Session Completed!
-          </h2>
-          <p style={{ color: COLORS.muted, fontSize: 14, lineHeight: 1.6, marginBottom: 8 }}>
-            {booking?.studentName}'s session has been marked as complete.
-            <br />Student progress has been updated.
-          </p>
-          <p style={{ color: COLORS.muted, fontSize: 13 }}>Redirecting to dashboard…</p>
-        </motion.div>
+      <div className="as-success-screen">
+        <div className="as-success-icon">
+          <CheckCircle2 size={40} color="#16a34a" />
+        </div>
+        <h2 className="as-success-title">Session Complete!</h2>
+        <p className="as-success-text">Progress saved. Redirecting to schedule...</p>
       </div>
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // ─── MAIN RENDER ──────────────────────────────────────────────
-  // ═══════════════════════════════════════════════════════════════
   return (
-    <div style={{
-      background: COLORS.bg,
-      minHeight: '100%',
-      maxWidth: 560,
-      margin: '0 auto',
-      padding: '0 0 40px',
-    }}>
+    <div className="active-session-wrapper">
 
-      {/* ─── 1. SESSION HEADER ───────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: -16 }}
-        animate={{ opacity: 1, y: 0 }}
-        style={{ marginBottom: 24 }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <button
-            onClick={() => navigate('/instructor')}
-            style={{
-              background: COLORS.card,
-              border: `1px solid ${COLORS.cardBorder}`,
-              borderRadius: 12,
-              width: 40,
-              height: 40,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: COLORS.muted,
-              flexShrink: 0,
-            }}
-            aria-label="Go back"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div style={{ flex: 1 }}>
-            <h1 style={{
-              color: COLORS.text,
-              fontSize: 22,
-              fontWeight: 800,
-              margin: 0,
-              lineHeight: 1.2,
-            }}>
-              {booking.studentName || 'Student'}
-            </h1>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              marginTop: 6,
-              flexWrap: 'wrap',
-            }}>
-              {/* Session type badge */}
-              <span style={{
-                background: COLORS.amberDim,
-                color: COLORS.amber,
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '4px 10px',
-                borderRadius: 8,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-              }}>
-                {booking.sessionType || 'Driving Lesson'}
-              </span>
-              {/* Status badge */}
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                background: COLORS.greenDim,
-                color: COLORS.green,
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '4px 10px',
-                borderRadius: 8,
-              }}>
-                <span style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
-                  background: COLORS.green,
-                  display: 'inline-block',
-                  animation: 'pulse-dot 1.5s ease-in-out infinite',
-                }} />
-                In Progress
-              </span>
+      {/* Header */}
+      <div className="as-header">
+        <button onClick={() => navigate('/instructor/schedule')} className="as-back-btn">
+          <ArrowLeft size={18} />
+        </button>
+        <div>
+          <h1 className="as-title">Active Session</h1>
+          <p className="as-subtitle">Live training dashboard</p>
+        </div>
+        <div style={{ marginLeft: 'auto' }}>
+          <span className={`as-live-badge ${status}`}>
+            {status === 'ongoing' && <span className="as-live-dot" />}
+            {status.replace('-', ' ')}
+          </span>
+        </div>
+      </div>
+
+      {/* Session Info Card */}
+      <div className="as-info-card">
+        <h2 className="as-student-name">{session?.studentName || 'Student'}</h2>
+        <div className="as-info-chips">
+          <span className="as-chip">
+            <Car size={14} color="#6b7280" /> {session?.vehicle || session?.vehicleType || 'Car'}
+          </span>
+          <span className="as-chip">
+            <GraduationCap size={14} color="#6b7280" /> {session?.sessionType || 'Standard'}
+          </span>
+          <span className="as-chip">
+            <Clock size={14} color="#6b7280" /> {session?.time || 'N/A'}
+          </span>
+        </div>
+      </div>
+
+      {/* Attendance & Performance Controls */}
+      <div className="as-section-card as-tracking-card">
+        <h3 className="as-section-title">Session Tracking</h3>
+        <div className="as-tracking-grid">
+          <div className="as-tracking-field">
+            <label className="as-field-label">Attendance</label>
+            <div className="as-radio-group">
+              <label className={`as-radio-option ${attendance === 'present' ? 'selected' : ''}`}>
+                <input type="radio" name="attendance" value="present" checked={attendance === 'present'} onChange={e => setAttendance(e.target.value)} />
+                <CheckCircle2 size={16} />
+                Present
+              </label>
+              <label className={`as-radio-option absent ${attendance === 'absent' ? 'selected' : ''}`}>
+                <input type="radio" name="attendance" value="absent" checked={attendance === 'absent'} onChange={e => setAttendance(e.target.value)} />
+                <XCircle size={16} />
+                Absent
+              </label>
             </div>
           </div>
+          <div className="as-tracking-field">
+            <label className="as-field-label">Performance Rating</label>
+            <select value={performance} onChange={e => setPerformance(e.target.value)} className="as-performance-select">
+              <option value="Good">👍 Good</option>
+              <option value="Average">👌 Average</option>
+              <option value="Needs Improvement">⚠️ Needs Improvement</option>
+            </select>
+          </div>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Pulse keyframes injected via style tag */}
-      <style>{`
-        @keyframes pulse-dot {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(0.75); }
-        }
-        @keyframes glow {
-          0%, 100% { text-shadow: 0 0 20px rgba(0,230,118,0.15); }
-          50% { text-shadow: 0 0 40px rgba(0,230,118,0.3); }
-        }
-      `}</style>
-
-      {/* ─── 2. SESSION TIMER ────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08 }}
-        style={{ ...cardStyle, textAlign: 'center', marginBottom: 20 }}
-      >
-        {/* Timer display */}
-        <div style={{
-          fontSize: 56,
-          fontWeight: 800,
-          fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
-          color: running ? COLORS.green : COLORS.text,
-          letterSpacing: '2px',
-          lineHeight: 1,
-          marginBottom: 6,
-          animation: running ? 'glow 2s ease-in-out infinite' : 'none',
-          transition: 'color 0.3s ease',
-        }}>
-          {formatTime(seconds)}
+      {/* Timer & Controls Card */}
+      <div className="as-timer-card">
+        <div className="as-timer-label">
+          <Clock size={16} /> Session Duration
         </div>
+        <div className={`as-timer-display ${status === 'ongoing' ? 'running' : ''}`}>
+          {formatTime(elapsed)}
+        </div>
+        
+        {/* Controls */}
+        <div className="as-controls">
+          {status !== 'ongoing' ? (
+            <button className="as-ctrl-btn as-btn-start" onClick={handleStart}>
+              <Play size={20} /> {elapsed > 0 ? 'Resume' : 'Start'}
+            </button>
+          ) : (
+            <button className="as-ctrl-btn as-btn-pause" onClick={handlePause}>
+              <Pause size={20} /> Pause
+            </button>
+          )}
+          <button className="as-ctrl-btn as-btn-cancel" onClick={handleCancel}>
+            <XCircle size={20} /> Cancel
+          </button>
+        </div>
+      </div>
 
-        {/* Start time display */}
-        <p style={{
-          color: COLORS.muted,
-          fontSize: 13,
-          fontWeight: 500,
-          marginBottom: 20,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 6,
-        }}>
-          <Clock size={14} />
-          {sessionStartTime
-            ? `Started at ${sessionStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-            : 'Not started yet'
-          }
-        </p>
-
-        {/* Start / Pause button */}
-        <motion.button
-          whileTap={{ scale: 0.94 }}
-          whileHover={{ scale: 1.03 }}
-          onClick={toggleTimer}
-          style={{
-            background: running ? COLORS.red : COLORS.green,
-            color: running ? '#fff' : '#0a0f18',
-            border: 'none',
-            borderRadius: 14,
-            padding: '14px 48px',
-            fontSize: 16,
-            fontWeight: 800,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 10,
-            boxShadow: running
-              ? `0 0 24px ${COLORS.red}44`
-              : `0 0 24px ${COLORS.green}44`,
-            transition: 'box-shadow 0.3s ease',
-          }}
-        >
-          {running ? <Pause size={20} /> : <Play size={20} />}
-          {running ? 'Pause' : 'Start'}
-        </motion.button>
-      </motion.div>
-
-      {/* ─── 3. SKILLS CHECKLIST ─────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.16 }}
-        style={{ ...cardStyle, marginBottom: 20 }}
-      >
-        <h3 style={{
-          color: COLORS.text,
-          fontSize: 16,
-          fontWeight: 700,
-          marginBottom: 16,
-          marginTop: 0,
-        }}>
-          Skills Assessment
-        </h3>
-
-        {/* 2×4 Grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 10,
-        }}>
-          {SKILLS.map((skill) => {
-            const checked = !!checkedSkills[skill];
+      {/* Skills Checklist */}
+      <div className="as-section-card">
+        <h3 className="as-section-title">Training Progress</h3>
+        <div className="as-skill-grid">
+          {skills.map(skill => {
+            const isChecked = checkedSkills.includes(skill);
             return (
-              <motion.button
-                key={skill}
-                type="button"
-                whileTap={{ scale: 0.95 }}
+              <div 
+                key={skill} 
+                className={`as-skill-item ${isChecked ? 'checked' : ''}`}
                 onClick={() => toggleSkill(skill)}
-                style={{
-                  background: checked ? COLORS.greenDim : COLORS.inputBg,
-                  border: `1.5px solid ${checked ? COLORS.green : COLORS.inputBorder}`,
-                  borderRadius: 12,
-                  padding: '14px 12px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  transition: 'all 0.25s ease',
-                }}
               >
-                <motion.div
-                  initial={false}
-                  animate={{
-                    scale: checked ? 1 : 0.85,
-                    opacity: checked ? 1 : 0.3,
-                  }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <CheckCircle
-                    size={20}
-                    color={checked ? COLORS.green : COLORS.muted}
-                    fill={checked ? COLORS.green : 'transparent'}
-                  />
-                </motion.div>
-                <span style={{
-                  color: checked ? COLORS.green : COLORS.muted,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  transition: 'color 0.25s ease',
-                  textAlign: 'left',
-                }}>
-                  {skill}
-                </span>
-              </motion.button>
+                <div className="as-skill-check">
+                  <CheckCircle2 size={18} color={isChecked ? '#16a34a' : '#d1d5db'} />
+                </div>
+                <span className="as-skill-label">{skill}</span>
+              </div>
             );
           })}
         </div>
-
-        {/* SVG Progress Ring */}
-        <ProgressRing percent={skillPercent} />
-      </motion.div>
-
-      {/* ─── 4. FEEDBACK & RATING ────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.24 }}
-        style={{ ...cardStyle, marginBottom: 20 }}
-      >
-        <h3 style={{
-          color: COLORS.text,
-          fontSize: 16,
-          fontWeight: 700,
-          marginBottom: 16,
-          marginTop: 0,
-        }}>
-          Session Rating
-        </h3>
-
-        {/* Star rating */}
-        <StarRating value={rating} onChange={setRating} />
-
-        {rating > 0 && (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            style={{
-              textAlign: 'center',
-              color: COLORS.amber,
-              fontSize: 13,
-              fontWeight: 600,
-              marginTop: 8,
-              marginBottom: 0,
-            }}
-          >
-            {rating === 1 && 'Needs Improvement'}
-            {rating === 2 && 'Below Average'}
-            {rating === 3 && 'Average'}
-            {rating === 4 && 'Good Performance'}
-            {rating === 5 && 'Excellent!'}
-          </motion.p>
+        
+        {skills.length > 0 && (
+          <div className="as-progress-bar-container">
+            <div className="as-progress-labels">
+              <span>Progress</span>
+              <span className="as-progress-value">{Math.round((checkedSkills.length / skills.length) * 100)}%</span>
+            </div>
+            <div className="as-progress-track">
+              <div className="as-progress-fill" style={{ width: `${(checkedSkills.length / skills.length) * 100}%` }} />
+            </div>
+          </div>
         )}
+      </div>
 
-        {/* Feedback textarea */}
-        <div style={{ marginTop: 20 }}>
-          <label style={{
-            display: 'block',
-            color: COLORS.muted,
-            fontSize: 13,
-            fontWeight: 600,
-            marginBottom: 8,
-          }}>
-            Instructor Notes
-          </label>
-          <textarea
-            rows={4}
-            value={feedback}
-            onChange={(e) => {
-              if (e.target.value.length <= MAX_CHARS) setFeedback(e.target.value);
-            }}
-            placeholder="Add feedback about the student's performance, areas to improve, observations…"
-            style={{
-              width: '100%',
-              background: COLORS.inputBg,
-              border: `1.5px solid ${COLORS.inputBorder}`,
-              borderRadius: 12,
-              color: COLORS.text,
-              fontSize: 14,
-              padding: '14px 16px',
-              resize: 'none',
-              outline: 'none',
-              fontFamily: 'inherit',
-              lineHeight: 1.6,
-              boxSizing: 'border-box',
-              transition: 'border-color 0.2s ease',
-            }}
-            onFocus={(e) => {
-              e.target.style.borderColor = COLORS.green;
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = COLORS.inputBorder;
-            }}
-          />
-          <p style={{
-            color: feedback.length >= MAX_CHARS ? COLORS.amber : COLORS.muted,
-            fontSize: 12,
-            fontWeight: 500,
-            textAlign: 'right',
-            marginTop: 6,
-            transition: 'color 0.2s ease',
-          }}>
-            {feedback.length}/{MAX_CHARS}
-          </p>
-        </div>
-      </motion.div>
+      {/* Performance Notes */}
+      <div className="as-section-card">
+        <h3 className="as-section-title">Performance Notes</h3>
+        <textarea 
+          className="as-notes-textarea"
+          rows={3}
+          placeholder="e.g., Student needs improvement in turning..."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
 
-      {/* ─── 5. COMPLETE SESSION BUTTON ──────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.32 }}
+      {/* Complete Button */}
+      <button 
+        className={`as-complete-btn ${submitting ? 'submitting' : 'enabled'}`}
+        onClick={handleComplete}
+        disabled={submitting}
       >
-        <motion.button
-          whileTap={canComplete ? { scale: 0.97 } : {}}
-          whileHover={canComplete ? { scale: 1.01 } : {}}
-          onClick={handleComplete}
-          disabled={!canComplete}
-          style={{
-            width: '100%',
-            padding: '18px 24px',
-            borderRadius: 16,
-            border: 'none',
-            background: canComplete ? COLORS.green : `${COLORS.green}22`,
-            color: canComplete ? '#0a0f18' : `${COLORS.green}66`,
-            fontSize: 16,
-            fontWeight: 800,
-            cursor: canComplete ? 'pointer' : 'not-allowed',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 10,
-            boxShadow: canComplete ? `0 4px 24px ${COLORS.green}33` : 'none',
-            transition: 'all 0.3s ease',
-          }}
-        >
-          {submitting ? (
-            <>
-              <motion.span
-                animate={{ rotate: 360 }}
-                transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-                style={{ display: 'flex' }}
-              >
-                <Loader2 size={20} />
-              </motion.span>
-              Completing…
-            </>
-          ) : (
-            <>
-              <CheckCircle2 size={20} />
-              Mark Session Complete
-            </>
-          )}
-        </motion.button>
+        <CheckCircle2 size={24} /> 
+        {submitting ? 'Saving...' : 'Complete Session'}
+      </button>
 
-        {/* Helper text when button is disabled */}
-        <AnimatePresence>
-          {!canComplete && !submitting && (
-            <motion.p
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              style={{
-                color: COLORS.muted,
-                fontSize: 12,
-                textAlign: 'center',
-                marginTop: 10,
-                fontWeight: 500,
-              }}
-            >
-              {!timerStarted
-                ? 'Start the timer to enable session completion'
-                : 'Check at least 1 skill to complete the session'}
-            </motion.p>
-          )}
-        </AnimatePresence>
-      </motion.div>
     </div>
   );
 }

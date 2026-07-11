@@ -4,6 +4,86 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { Menu, X, ChevronRight, LogOut, User } from 'lucide-react';
 
+const NavItem = ({ item, location, collapsed }) => {
+  const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+  const Icon = item.icon;
+  return (
+    <Link to={item.path}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative
+        ${isActive ? 'bg-primary/50 text-white shadow-lg shadow-orange-500/30' : 'text-gray-400 hover:bg-white/10 hover:text-white'}`}>
+      <Icon size={20} className="shrink-0" />
+      <AnimatePresence>
+        {!collapsed && (
+          <motion.span initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }}
+            exit={{ opacity: 0, width: 0 }} className="text-sm font-medium whitespace-nowrap overflow-hidden">
+            {item.label}
+          </motion.span>
+        )}
+      </AnimatePresence>
+      {collapsed && (
+        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+          {item.label}
+        </div>
+      )}
+    </Link>
+  );
+};
+
+const SidebarContent = ({ collapsed, setCollapsed, title, items, userProfile, handleLogout, location }) => (
+  <div className="flex flex-col h-full bg-gray-950 border-r border-white/10">
+    {/* Header */}
+    <div className="flex items-center justify-between p-4 border-b border-white/10">
+      <AnimatePresence>
+        {!collapsed && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <p className="text-primary font-bold text-lg leading-tight">Eranga</p>
+            <p className="text-gray-400 text-xs">{title}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <button onClick={() => setCollapsed(!collapsed)}
+        className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+        <ChevronRight size={18} className={`transition-transform duration-300 ${collapsed ? '' : 'rotate-180'}`} />
+      </button>
+    </div>
+
+    {/* Nav Items */}
+    <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+      {items.map((item) => <NavItem key={item.path} item={item} location={location} collapsed={collapsed} />)}
+    </nav>
+
+    {/* User Footer */}
+    <div className="p-3 border-t border-white/10">
+      <div className={`flex items-center gap-3 p-2 rounded-xl bg-white/5 mb-2`}>
+        <div className="w-8 h-8 rounded-full bg-primary/50 flex items-center justify-center text-white text-sm font-bold shrink-0">
+          {userProfile?.name?.charAt(0) || 'U'}
+        </div>
+        <AnimatePresence>
+          {!collapsed && (
+            <motion.div initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }} className="overflow-hidden">
+              <p className="text-white text-sm font-medium whitespace-nowrap">{userProfile?.name || 'User'}</p>
+              <p className="text-gray-500 text-xs whitespace-nowrap capitalize">{userProfile?.role || 'student'}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+      <button onClick={handleLogout}
+        className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+        <LogOut size={18} className="shrink-0" />
+        <AnimatePresence>
+          {!collapsed && (
+            <motion.span initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }} className="text-sm font-medium whitespace-nowrap overflow-hidden">
+              Sign Out
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </button>
+    </div>
+  </div>
+);
+
 export default function Sidebar({ items, title }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -11,96 +91,17 @@ export default function Sidebar({ items, title }) {
   const navigate = useNavigate();
   const { userProfile, logout } = useAuth();
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
   const handleLogout = async () => {
     try {
       await logout();
-      navigate('/login');
+      navigate('/login', { replace: true });
     } catch (err) {
       console.error(err);
     }
   };
-
-  const NavItem = ({ item }) => {
-    const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
-    const Icon = item.icon;
-    return (
-      <Link to={item.path}
-        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative
-          ${isActive ? 'bg-primary/50 text-white shadow-lg shadow-orange-500/30' : 'text-gray-400 hover:bg-white/10 hover:text-white'}`}>
-        <Icon size={20} className="shrink-0" />
-        <AnimatePresence>
-          {!collapsed && (
-            <motion.span initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }}
-              exit={{ opacity: 0, width: 0 }} className="text-sm font-medium whitespace-nowrap overflow-hidden">
-              {item.label}
-            </motion.span>
-          )}
-        </AnimatePresence>
-        {collapsed && (
-          <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
-            {item.label}
-          </div>
-        )}
-      </Link>
-    );
-  };
-
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-gray-950 border-r border-white/10">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-white/10">
-        <AnimatePresence>
-          {!collapsed && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <p className="text-primary font-bold text-lg leading-tight">Eranga</p>
-              <p className="text-gray-400 text-xs">{title}</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <button onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
-          <ChevronRight size={18} className={`transition-transform duration-300 ${collapsed ? '' : 'rotate-180'}`} />
-        </button>
-      </div>
-
-      {/* Nav Items */}
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {items.map((item) => <NavItem key={item.path} item={item} />)}
-      </nav>
-
-      {/* User Footer */}
-      <div className="p-3 border-t border-white/10">
-        <div className={`flex items-center gap-3 p-2 rounded-xl bg-white/5 mb-2`}>
-          <div className="w-8 h-8 rounded-full bg-primary/50 flex items-center justify-center text-white text-sm font-bold shrink-0">
-            {userProfile?.name?.charAt(0) || 'U'}
-          </div>
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.div initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }} className="overflow-hidden">
-                <p className="text-white text-sm font-medium whitespace-nowrap">{userProfile?.name || 'User'}</p>
-                <p className="text-gray-500 text-xs whitespace-nowrap capitalize">{userProfile?.role || 'student'}</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-        <button onClick={handleLogout}
-          className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors">
-          <LogOut size={18} className="shrink-0" />
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.span initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }} className="text-sm font-medium whitespace-nowrap overflow-hidden">
-                Sign Out
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </button>
-      </div>
-    </div>
-  );
 
   return (
     <>
@@ -125,7 +126,15 @@ export default function Sidebar({ items, title }) {
                   <X size={18} />
                 </button>
               </div>
-              <SidebarContent />
+              <SidebarContent
+                collapsed={collapsed}
+                setCollapsed={setCollapsed}
+                title={title}
+                items={items}
+                userProfile={userProfile}
+                handleLogout={handleLogout}
+                location={location}
+              />
             </motion.div>
           </>
         )}
@@ -134,7 +143,15 @@ export default function Sidebar({ items, title }) {
       {/* Desktop Sidebar */}
       <motion.aside animate={{ width: collapsed ? 72 : 256 }} transition={{ duration: 0.3, ease: 'easeInOut' }}
         className="hidden lg:flex flex-col h-screen sticky top-0 shrink-0 overflow-hidden">
-        <SidebarContent />
+        <SidebarContent
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+          title={title}
+          items={items}
+          userProfile={userProfile}
+          handleLogout={handleLogout}
+          location={location}
+        />
       </motion.aside>
     </>
   );

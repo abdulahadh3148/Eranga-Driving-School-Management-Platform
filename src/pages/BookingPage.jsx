@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, doc, updateDoc, increment } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, increment, getDocs, query, where, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { TIME_SLOTS, autoAssignResources } from '../utils/schedulingEngine';
+import { generateCustomId } from '../utils/idGenerator';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 export default function BookingPage() {
   const { currentUser, userProfile } = useAuth();
@@ -16,7 +20,7 @@ export default function BookingPage() {
   }, [currentUser, navigate]);
 
   // Dynamic state hooks
-  const [vehicle, setVehicle] = useState('Car / Van');
+  const [vehicle, setVehicle] = useState('Car'); // 'Car', 'Van', 'Bike', 'Heavy'
   
   // Set tomorrow's date by default
   const getTomorrowDateString = () => {
@@ -25,14 +29,38 @@ export default function BookingPage() {
     return tomorrow.toISOString().split('T')[0];
   };
   const [date, setDate] = useState(getTomorrowDateString());
-  const [slot, setSlot] = useState('11:00 AM');
-  const [instructor, setInstructor] = useState('Saman Perera - Manual Specialist');
+  const [slot, setSlot] = useState(TIME_SLOTS[0]); // Entire object from TIME_SLOTS
   
   const [loading, setLoading] = useState(false);
+  const [engineLoading, setEngineLoading] = useState(true);
+  const [instructorsList, setInstructorsList] = useState([]);
+  const [vehiclesList, setVehiclesList] = useState([]);
+  const [sessionsList, setSessionsList] = useState([]);
+
+  useEffect(() => {
+    const fetchEngineData = async () => {
+      try {
+        const [instSnap, vehSnap, sesSnap] = await Promise.all([
+          getDocs(query(collection(db, 'users'), where('role', '==', 'instructor'))),
+          getDocs(collection(db, 'vehicles')),
+          getDocs(collection(db, 'sessions'))
+        ]);
+        setInstructorsList(instSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setVehiclesList(vehSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setSessionsList(sesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error('Error fetching engine data:', err);
+      } finally {
+        setEngineLoading(false);
+      }
+    };
+    fetchEngineData();
+  }, []);
+
   const [error, setError] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
 
-  if (!currentUser || !userProfile) {
+  if (!currentUser || !userProfile || engineLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface">
         <div className="text-center">
@@ -49,13 +77,9 @@ export default function BookingPage() {
 
   // Map user selections to human-readable values
   const getVehicleLabel = () => {
-    if (vehicle === 'Car / Van') return 'Car / Van (Manual)';
+    if (vehicle === 'Car') return 'Car / Van (Manual)';
     if (vehicle === 'Bike') return 'Motorbike (Light)';
     return 'Three-Wheeler (Tuk)';
-  };
-
-  const getInstructorName = () => {
-    return instructor.split(' - ')[0];
   };
 
   const handleConfirmBooking = async () => {
@@ -65,20 +89,58 @@ export default function BookingPage() {
     try {
       const activePackage = userProfile.enrolledPackage || userProfile.package || localStorage.getItem('selectedPackage') || 'Standard';
 
+      // 0. Auto Assign Resources
+      const assignment = autoAssignResources(
+        sessionsList,
+        date,
+        slot.id,
+        vehicle, 
+        instructorsList,
+        vehiclesList
+      );
+
+      if (!assignment || !assignment.instructor) {
+        throw new Error('No instructors or vehicles available for this time slot. Please select a different time or date.');
+      }
+
       // 1. Create booking document in Firestore
       const newBooking = {
         studentId: currentUser.uid,
         studentName: userProfile.name || 'New Student',
         vehicleType: getVehicleLabel(),
         date: date,
-        timeSlot: slot,
-        instructor: getInstructorName(),
+        timeSlot: slot.label,
+        instructorId: assignment.instructor.id,
+        instructor: assignment.instructor.name,
         price: 2500,
         createdAt: new Date().toISOString(),
         status: 'upcoming'
       };
 
-      await addDoc(collection(db, 'bookings'), newBooking);
+      const bookingRef = await addDoc(collection(db, 'bookings'), newBooking);
+
+      // 1.5 Create session in 'sessions' (schedules) table
+      const sessionId = await generateCustomId('SES');
+      const newSession = {
+        bookingId: bookingRef.id,
+        date: date,
+        timeSlotId: slot.id,
+        timeSlotLabel: slot.label,
+        time: slot.label,
+        instructorId: assignment.instructor.id,
+        instructorName: assignment.instructor.name,
+        vehicleId: assignment.vehicle.id,
+        vehicleName: assignment.vehicle.name,
+        vehicleType: vehicle,
+        students: [currentUser.uid], 
+        studentId: currentUser.uid, 
+        studentName: userProfile.name || 'New Student',
+        trainingLevel: 'L1',
+        trainingLevelLabel: 'Training L1',
+        status: 'upcoming'
+      };
+      
+      await setDoc(doc(db, 'sessions', sessionId), newSession);
 
       // 2. Increment lessonsScheduled count in student profile document
       const userDocRef = doc(db, 'users', currentUser.uid);
@@ -127,8 +189,8 @@ export default function BookingPage() {
             </Link>
             <nav className="hidden md:flex items-center gap-6">
               <Link to="/student" className="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors duration-200">Dashboard</Link>
-              <a className="font-label-md text-label-md text-primary border-b-2 border-primary pb-1 transition-colors duration-200" href="#">Book Class</a>
-              <a className="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors duration-200" href="#">History</a>
+              <span className="font-label-md text-label-md text-primary border-b-2 border-primary pb-1">Book Class</span>
+              <Link to="/student" className="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors duration-200">History</Link>
             </nav>
           </div>
           <div className="flex items-center gap-4">
@@ -179,9 +241,9 @@ export default function BookingPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 
                 <button 
-                  onClick={() => setVehicle('Car / Van')}
+                  onClick={() => setVehicle('Car')}
                   className={`flex flex-col items-center justify-center p-8 transition-all ${
-                    vehicle === 'Car / Van' 
+                    vehicle === 'Car' 
                       ? 'bg-primary-container border-2 border-primary active-ring' 
                       : 'bg-surface-variant border border-outline-variant hover:bg-primary-container'
                   }`}
@@ -203,9 +265,9 @@ export default function BookingPage() {
                 </button>
                 
                 <button 
-                  onClick={() => setVehicle('Three-Wheeler')}
+                  onClick={() => setVehicle('Heavy')}
                   className={`flex flex-col items-center justify-center p-8 transition-all ${
-                    vehicle === 'Three-Wheeler' 
+                    vehicle === 'Heavy' 
                       ? 'bg-primary-container border-2 border-primary active-ring' 
                       : 'bg-surface-variant border border-outline-variant hover:bg-primary-container'
                   }`}
@@ -223,16 +285,100 @@ export default function BookingPage() {
               {/* 02. Choose Date */}
               <div className="space-y-6">
                 <h3 className="font-label-md text-sm uppercase tracking-widest text-on-surface-variant font-bold">02. Choose Date</h3>
-                <div className="p-6 bg-surface-variant border border-outline-variant">
-                  <input 
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full bg-transparent border-none focus:ring-0 font-body-md text-primary text-lg"
+                <div className="booking-calendar-container">
+                  <style>{`
+                    .booking-calendar-container .react-datepicker {
+                      border: 1px solid var(--md-sys-color-outline-variant, #c4c7c5) !important;
+                      border-radius: 0 !important;
+                      font-family: inherit !important;
+                      width: 100% !important;
+                      background: var(--md-sys-color-surface-variant, #e7e0ec) !important;
+                    }
+                    .booking-calendar-container .react-datepicker__month-container {
+                      width: 100% !important;
+                    }
+                    .booking-calendar-container .react-datepicker__header {
+                      background: var(--md-sys-color-primary, #0B2545) !important;
+                      border-bottom: none !important;
+                      border-radius: 0 !important;
+                      padding: 16px 12px 12px !important;
+                    }
+                    .booking-calendar-container .react-datepicker__current-month {
+                      color: #fff !important;
+                      font-weight: 800 !important;
+                      font-size: 15px !important;
+                      letter-spacing: 0.04em !important;
+                      margin-bottom: 8px !important;
+                    }
+                    .booking-calendar-container .react-datepicker__day-names {
+                      display: flex !important;
+                      justify-content: space-around !important;
+                    }
+                    .booking-calendar-container .react-datepicker__day-name {
+                      color: rgba(255,255,255,0.7) !important;
+                      font-weight: 700 !important;
+                      font-size: 11px !important;
+                      text-transform: uppercase !important;
+                      width: 36px !important;
+                      line-height: 36px !important;
+                    }
+                    .booking-calendar-container .react-datepicker__month {
+                      margin: 8px !important;
+                    }
+                    .booking-calendar-container .react-datepicker__week {
+                      display: flex !important;
+                      justify-content: space-around !important;
+                    }
+                    .booking-calendar-container .react-datepicker__day {
+                      width: 36px !important;
+                      line-height: 36px !important;
+                      font-size: 13px !important;
+                      font-weight: 600 !important;
+                      border-radius: 0 !important;
+                      color: #333 !important;
+                      transition: all 0.15s !important;
+                    }
+                    .booking-calendar-container .react-datepicker__day:hover {
+                      background: rgba(11,37,69,0.1) !important;
+                      border-radius: 0 !important;
+                    }
+                    .booking-calendar-container .react-datepicker__day--selected {
+                      background: #0B2545 !important;
+                      color: #fff !important;
+                      font-weight: 800 !important;
+                    }
+                    .booking-calendar-container .react-datepicker__day--today {
+                      font-weight: 900 !important;
+                      color: #0B2545 !important;
+                      border: 2px solid #0B2545 !important;
+                    }
+                    .booking-calendar-container .react-datepicker__day--today.react-datepicker__day--selected {
+                      color: #fff !important;
+                      border-color: #0B2545 !important;
+                    }
+                    .booking-calendar-container .react-datepicker__day--disabled {
+                      color: #ccc !important;
+                    }
+                    .booking-calendar-container .react-datepicker__navigation {
+                      top: 14px !important;
+                    }
+                    .booking-calendar-container .react-datepicker__navigation-icon::before {
+                      border-color: #fff !important;
+                    }
+                  `}</style>
+                  <DatePicker
+                    selected={date ? new Date(date + 'T00:00:00') : new Date()}
+                    onChange={(d) => {
+                      if (d) {
+                        const offset = d.getTimezoneOffset();
+                        const local = new Date(d.getTime() - (offset * 60 * 1000));
+                        setDate(local.toISOString().split('T')[0]);
+                      }
+                    }}
+                    inline
+                    minDate={new Date()}
+                    calendarClassName="booking-inline-calendar"
                   />
-                  <div className="mt-4 grid grid-cols-7 text-center text-xs gap-2 opacity-50 font-bold uppercase">
-                    <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
-                  </div>
                 </div>
               </div>
 
@@ -240,19 +386,19 @@ export default function BookingPage() {
               <div className="space-y-6">
                 <h3 className="font-label-md text-sm uppercase tracking-widest text-on-surface-variant font-bold">03. Available Slots</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  {['9:00 AM', '11:00 AM', '2:00 PM', '4:00 PM'].map((slotTime) => {
-                    const isSelected = slot === slotTime;
+                  {TIME_SLOTS.map((ts) => {
+                    const isSelected = slot.id === ts.id;
                     return (
                       <button
-                        key={slotTime}
-                        onClick={() => setSlot(slotTime)}
+                        key={ts.id}
+                        onClick={() => setSlot(ts)}
                         className={`py-4 font-label-md font-bold text-center transition-all ${
                           isSelected 
                             ? 'bg-primary text-white border border-primary' 
                             : 'bg-surface-variant border border-outline-variant hover:bg-primary-container'
                         }`}
                       >
-                        {slotTime}
+                        {ts.label}
                       </button>
                     );
                   })}
@@ -263,20 +409,12 @@ export default function BookingPage() {
 
             {/* 04. Instructor Selection */}
             <div className="space-y-6">
-              <h3 className="font-label-md text-sm uppercase tracking-widest text-on-surface-variant font-bold">04. Choose Instructor</h3>
-              <div className="relative">
-                <select 
-                  value={instructor}
-                  onChange={(e) => setInstructor(e.target.value)}
-                  className="w-full appearance-none p-6 bg-surface-variant border border-outline-variant font-body-md text-primary focus:border-primary focus:ring-0 outline-none pr-12"
-                >
-                  <option value="Saman Perera - Manual Specialist">Saman Perera - Manual Specialist</option>
-                  <option value="Anura Kumara - Automatic Expert">Anura Kumara - Automatic Expert</option>
-                  <option value="Sunethra Silva - Heavy Vehicle Pro">Sunethra Silva - Heavy Vehicle Pro</option>
-                </select>
-                <span className="material-symbols-outlined absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                  expand_more
-                </span>
+              <h3 className="font-label-md text-sm uppercase tracking-widest text-on-surface-variant font-bold">04. Instructor Selection</h3>
+              <div className="p-6 bg-surface-variant border border-outline-variant text-on-surface-variant font-body-md">
+                <p className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary">auto_awesome</span>
+                  An expert instructor will be automatically assigned to you based on your selected vehicle and time slot.
+                </p>
               </div>
             </div>
 
@@ -309,13 +447,16 @@ export default function BookingPage() {
                   <span className="font-body-md text-right font-medium">
                     {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     <br/>
-                    {slot}
+                    {slot.label}
                   </span>
                 </div>
                 
                 <div className="flex justify-between items-start">
                   <span className="text-on-surface-variant text-sm font-bold">Instructor</span>
-                  <span className="font-body-md text-right font-medium">{getInstructorName()}</span>
+                  <span className="font-body-md text-right font-medium text-primary flex items-center gap-1 justify-end">
+                    <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
+                    Auto-Assigned
+                  </span>
                 </div>
                 
               </div>
@@ -372,14 +513,14 @@ export default function BookingPage() {
             <div className="space-y-2">
               <h2 className="text-2xl font-serif font-bold text-primary">Booking Confirmed!</h2>
               <p className="text-on-surface-variant text-sm">
-                Your driving session has been scheduled successfully with {getInstructorName()}.
+                Your driving session has been scheduled successfully.
               </p>
             </div>
 
             <div className="bg-primary-container p-4 text-left border border-outline-variant space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-on-surface-variant">Date:</span> <span className="font-medium">{date}</span></div>
-              <div className="flex justify-between"><span className="text-on-surface-variant">Slot:</span> <span className="font-medium">{slot}</span></div>
-              <div className="flex justify-between"><span className="text-on-surface-variant">Vehicle:</span> <span className="font-medium">{vehicle}</span></div>
+              <div className="flex justify-between"><span className="text-on-surface-variant">Slot:</span> <span className="font-medium">{slot.label}</span></div>
+              <div className="flex justify-between"><span className="text-on-surface-variant">Vehicle:</span> <span className="font-medium">{getVehicleLabel()}</span></div>
             </div>
 
             <button 
@@ -401,9 +542,9 @@ export default function BookingPage() {
             <p className="font-label-sm text-xs text-on-surface-variant">© 2026 EDS Driving Excellence. All rights reserved.</p>
           </div>
           <nav className="flex flex-wrap justify-center gap-8">
-            <a className="font-label-sm text-xs text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
-            <a className="font-label-sm text-xs text-on-surface-variant hover:text-primary transition-colors" href="#">Terms of Service</a>
-            <a className="font-label-sm text-xs text-on-surface-variant hover:text-primary transition-colors" href="#">Contact Support</a>
+            <Link className="font-label-sm text-xs text-on-surface-variant hover:text-primary transition-colors" to="/about">Privacy Policy</Link>
+            <Link className="font-label-sm text-xs text-on-surface-variant hover:text-primary transition-colors" to="/about">Terms of Service</Link>
+            <Link className="font-label-sm text-xs text-on-surface-variant hover:text-primary transition-colors" to="/contact">Contact Support</Link>
           </nav>
         </div>
       </footer>

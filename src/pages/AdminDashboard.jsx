@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase/config';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import './AdminDashboard.css';
+import { useAuth } from '../../context/AuthContext';
 
 const navItems = [
   { icon: 'dashboard', label: 'Dashboard', id: 'dashboard' },
@@ -164,9 +165,15 @@ export default function AdminDashboard() {
   const [newStatus, setNewStatus] = useState('PENDING');
 
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
-  const handleLogout = () => {
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // Subscribe to students in Firestore
@@ -206,13 +213,16 @@ export default function AdminDashboard() {
   }, []);
 
   // Sync selected student with active student details
+   
   useEffect(() => {
     if (selectedStudent) {
       const updated = students.find(s => s.id === selectedStudent.id);
       if (updated) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedStudent(updated);
       }
     } else if (students.length > 0) {
+       
       setSelectedStudent(students[0]);
     }
   }, [students, selectedStudent?.id]);
@@ -301,6 +311,37 @@ export default function AdminDashboard() {
       }
     } else {
       const updated = students.map(s => s.id === id ? { ...s, status: 'rejected' } : s);
+      setStudents(updated);
+    }
+  };
+
+  const handleApproveMedical = async (id) => {
+    if (typeof id === 'string') {
+      try {
+        const studentRef = doc(db, 'users', id);
+        await updateDoc(studentRef, { medicalStatus: 'approved' });
+      } catch (err) {
+        console.error("Error approving medical:", err);
+      }
+    } else {
+      const updated = students.map(s => s.id === id ? { ...s, medicalStatus: 'approved' } : s);
+      setStudents(updated);
+    }
+  };
+
+  const handleIssuePermit = async (id) => {
+    const permitNumber = window.prompt("Enter Learner Permit Number to issue:");
+    if (!permitNumber) return;
+    
+    if (typeof id === 'string') {
+      try {
+        const studentRef = doc(db, 'users', id);
+        await updateDoc(studentRef, { permitStatus: 'issued', learnerPermit: permitNumber });
+      } catch (err) {
+        console.error("Error issuing permit:", err);
+      }
+    } else {
+      const updated = students.map(s => s.id === id ? { ...s, permitStatus: 'issued', learnerPermit: permitNumber } : s);
       setStudents(updated);
     }
   };
@@ -721,6 +762,47 @@ export default function AdminDashboard() {
                               style={{ width: `${selectedStudent.progress}%` }}
                             />
                           </div>
+                        </div>
+
+                        <div className="mt-6 border-t border-outline-variant pt-4">
+                          <p className="text-[10px] font-bold text-secondary uppercase tracking-widest mb-3">Event-Driven Progress Checklist</p>
+                          <div className="grid grid-cols-2 gap-y-3">
+                            <div className="flex items-center gap-2">
+                              {selectedStudent.is_profile_completed ? <span className="material-symbols-outlined text-green-500 text-sm">check_circle</span> : <span className="material-symbols-outlined text-secondary text-sm">radio_button_unchecked</span>}
+                              <span className="font-label-sm text-label-sm">Registration</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {selectedStudent.medicalStatus === 'approved' ? <span className="material-symbols-outlined text-green-500 text-sm">check_circle</span> : <span className="material-symbols-outlined text-amber-500 text-sm">{selectedStudent.medicalStatus === 'pending' ? 'hourglass_empty' : 'radio_button_unchecked'}</span>}
+                              <span className="font-label-sm text-label-sm">Medical</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {selectedStudent.permitStatus === 'issued' ? <span className="material-symbols-outlined text-green-500 text-sm">check_circle</span> : <span className="material-symbols-outlined text-secondary text-sm">radio_button_unchecked</span>}
+                              <span className="font-label-sm text-label-sm">Learner Permit</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {selectedStudent.trialPassed ? <span className="material-symbols-outlined text-green-500 text-sm">check_circle</span> : <span className="material-symbols-outlined text-secondary text-sm">radio_button_unchecked</span>}
+                              <span className="font-label-sm text-label-sm">Trial Test</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex gap-3">
+                          {(!selectedStudent.medicalStatus || selectedStudent.medicalStatus !== 'approved') && (
+                            <button 
+                              className="bg-surface-container-high text-primary px-3 py-1.5 font-label-sm text-label-sm border border-outline-variant hover:border-primary transition-all"
+                              onClick={() => handleApproveMedical(selectedStudent.id)}
+                            >
+                              Approve Medical
+                            </button>
+                          )}
+                          {(!selectedStudent.permitStatus || selectedStudent.permitStatus !== 'issued') && selectedStudent.medicalStatus === 'approved' && (
+                            <button 
+                              className="bg-surface-container-high text-primary px-3 py-1.5 font-label-sm text-label-sm border border-outline-variant hover:border-primary transition-all"
+                              onClick={() => handleIssuePermit(selectedStudent.id)}
+                            >
+                              Issue Permit
+                            </button>
+                          )}
                         </div>
                       </div>
                     </section>

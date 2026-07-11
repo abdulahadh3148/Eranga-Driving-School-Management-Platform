@@ -1,28 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from "../../firebase/config";
+import { generateCustomId } from '../../utils/idGenerator';
+import { useAuth } from '../../context/AuthContext';
 import './RegisterPage.css';
 
 const RegisterPage = () => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [nic, setNic] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { currentUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Auto-redirect if already logged in and profile is fully loaded
+    if (!authLoading && currentUser && userProfile) {
+      if (userProfile.role === 'student') navigate('/student');
+      else if (userProfile.role === 'instructor') navigate('/instructor');
+      else if (userProfile.role === 'admin') navigate('/admin');
+    }
+  }, [authLoading, currentUser, userProfile, navigate]);
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
 
     // Input Validation
-    if (!fullName || !email || !phone || !password || !confirmPassword) {
+    if (!fullName || !email || !phone || !nic || !password || !confirmPassword) {
       setError('Please fill in all fields.');
       return;
     }
@@ -44,23 +57,29 @@ const RegisterPage = () => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // 2. Initialize student profile in Firestore
-      const userDocRef = doc(db, 'users', user.uid);
+      // 2. Generate Custom ID (EDSxxx)
+      const customId = await generateCustomId('EDS');
+
+      // 3. Initialize student profile in Firestore with Custom ID as Primary Key
+      const userDocRef = doc(db, 'users', customId);
       const newProfile = {
+        id: customId,
+        authUid: user.uid,
         name: fullName,
         email: email,
         phone: phone,
+        nic: nic,
         role: 'student',
         status: 'pending',
+        setup_completed: false,
         progress: 0,
         classesCompleted: 0,
         classesTotal: 18,
         lessonsScheduled: 0,
-        outstandingFees: 15000,
+        outstandingFees: 0,
         currentStep: 'Medical Check',
         createdAt: new Date().toISOString()
       };
-
 
       await setDoc(userDocRef, newProfile);
 
@@ -96,8 +115,19 @@ const RegisterPage = () => {
   return (
     <div className="register-page-wrapper">
       <main className="register-main">
+        {/* Back to Home Link */}
+        <div style={{ marginBottom: '24px', textAlign: 'center' }}>
+          <Link to="/" style={{ color: '#505f76', textDecoration: 'none', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_back</span>
+            Back to Home
+          </Link>
+        </div>
+
         {/* Logo Header */}
         <div className="register-header">
+          <div style={{ backgroundColor: 'var(--primary)', color: 'white', width: '48px', height: '48px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', boxShadow: '0 4px 6px -1px rgba(11, 37, 69, 0.2)' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '28px' }}>directions_car</span>
+          </div>
           <h1 className="register-title">Create Student Account</h1>
           <p className="register-subtitle">Start your journey to professional driving excellence</p>
         </div>
@@ -154,6 +184,24 @@ const RegisterPage = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            {/* NIC Number */}
+            <div className="register-form-group">
+              <label className="register-label" htmlFor="nic">NIC Number</label>
+              <div className="register-input-wrapper">
+                <span className="material-symbols-outlined register-input-icon">badge</span>
+                <input
+                  className="register-input"
+                  id="nic"
+                  name="nic"
+                  placeholder="200012345678"
+                  type="text"
+                  value={nic}
+                  onChange={(e) => setNic(e.target.value)}
                   disabled={loading}
                 />
               </div>
@@ -282,10 +330,10 @@ const RegisterPage = () => {
 
       {/* Footer Content */}
       <footer className="register-footer-bottom">
-        <span></span>
+        <span>&copy; {new Date().getFullYear()} Eranga Driving School. All rights reserved.</span>
         <div className="footer-bottom-links">
-          <a href="#">Privacy Policy</a>
-          <a href="#">Terms of Service</a>
+          <Link to="/about">Privacy Policy</Link>
+          <Link to="/about">Terms of Service</Link>
         </div>
       </footer>
     </div>

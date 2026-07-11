@@ -15,7 +15,7 @@ export default function MyBookings() {
   useEffect(() => {
     const fetchInstructors = async () => {
       try {
-        const q = query(collection(db, 'users'), where('role', '==', 'instructor'));
+        const q = query(collection(db, 'instructors'));
         const snap = await getDocs(q);
         setInstructors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (err) {
@@ -27,9 +27,11 @@ export default function MyBookings() {
 
   useEffect(() => {
     if (!currentUser) return;
-    const q = query(collection(db, 'bookings'), where('studentId', '==', currentUser.uid), orderBy('date', 'desc'));
+    const q = query(collection(db, 'sessions'), where('studentId', '==', currentUser.uid));
     const unsub = onSnapshot(q, (snap) => {
-      setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      data.sort((a, b) => new Date(b.date) - new Date(a.date));
+      setBookings(data);
       setLoading(false);
     });
     return unsub;
@@ -45,7 +47,7 @@ export default function MyBookings() {
   const handleCancel = async (id) => {
     if (window.confirm('Are you sure you want to cancel this booking?')) {
       try {
-        await updateDoc(doc(db, 'bookings', id), { status: 'cancelled' });
+        await updateDoc(doc(db, 'sessions', id), { status: 'cancelled' });
       } catch (err) {
         console.error('Error cancelling:', err);
       }
@@ -53,16 +55,17 @@ export default function MyBookings() {
   };
 
   const filteredBookings = bookings.filter(b => {
-    if (tab === 'Upcoming') return b.status === 'pending' || b.status === 'confirmed';
+    if (tab === 'Upcoming') return b.status === 'scheduled' || b.status === 'ongoing';
     if (tab === 'Completed') return b.status === 'completed';
-    if (tab === 'Cancelled') return b.status === 'cancelled';
+    if (tab === 'Cancelled') return b.status === 'cancelled' || b.status === 'missed';
     return true;
   });
 
   const getStatusColor = (status) => {
     switch(status) {
-      case 'confirmed': return 'bg-green-100 text-green-700 border-green-200';
-      case 'pending': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'ongoing': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'scheduled': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'missed':
       case 'cancelled': return 'bg-red-100 text-red-700 border-red-200';
       case 'completed': return 'bg-gray-100 text-gray-700 border-gray-200';
       default: return 'bg-gray-100 text-gray-700';
@@ -113,7 +116,7 @@ export default function MyBookings() {
                   <CalendarDays size={18} className="text-primary" /> <span className="text-sm font-medium">{b.date}</span>
                 </div>
                 <div className="flex items-center gap-3 text-gray-700">
-                  <Clock size={18} className="text-primary" /> <span className="text-sm font-medium">{b.timeSlot}</span>
+                  <Clock size={18} className="text-primary" /> <span className="text-sm font-medium">{b.time}</span>
                 </div>
                 <div className="flex items-center gap-3 text-gray-700">
                   <User size={18} className="text-primary" /> <span className="text-sm font-medium">Instructor: {getInstructorName(b)}</span>

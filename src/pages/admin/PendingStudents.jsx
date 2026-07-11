@@ -24,7 +24,8 @@ export default function PendingStudents() {
   useEffect(() => { fetchStudents(); }, []);
 
   const handleAction = async (id, status) => {
-    if (!window.confirm(`Are you sure you want to ${status} this student?`)) return;
+    const confirmMsg = status === 'approved' ? 'approve' : 'reject';
+    if (!window.confirm(`Are you sure you want to ${confirmMsg} this student?`)) return;
     try {
       await updateDoc(doc(db, 'users', id), { status });
       fetchStudents(); // refresh
@@ -49,6 +50,7 @@ export default function PendingStudents() {
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-bold">
                 <tr>
+                  <th className="px-6 py-4">Student ID</th>
                   <th className="px-6 py-4">Student Details</th>
                   <th className="px-6 py-4">Package/License</th>
                   <th className="px-6 py-4">Registered On</th>
@@ -58,6 +60,7 @@ export default function PendingStudents() {
               <tbody className="divide-y divide-gray-100">
                 {students.map(s => (
                   <tr key={s.id} className="hover:bg-gray-50/50">
+                    <td className="px-6 py-4 font-mono font-bold text-primary">{s.id}</td>
                     <td className="px-6 py-4">
                       <div className="font-bold text-gray-900">{s.name || 'Unknown'}</div>
                       <div className="text-xs text-gray-500">{s.email} | {s.phone || 'No Phone'}</div>
@@ -82,7 +85,7 @@ export default function PendingStudents() {
                   </tr>
                 ))}
                 {students.length === 0 && (
-                  <tr><td colSpan="4" className="px-6 py-8 text-center text-gray-500">No pending approvals at this time.</td></tr>
+                  <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">No pending approvals at this time.</td></tr>
                 )}
               </tbody>
             </table>

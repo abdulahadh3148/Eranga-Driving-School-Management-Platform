@@ -5,6 +5,8 @@ import { db } from '../../firebase/config';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { Save, X, CheckCircle, AlertCircle } from 'lucide-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 export default function EditProfile() {
   const { currentUser, userProfile, setUserProfile } = useAuth();
@@ -89,8 +91,34 @@ export default function EditProfile() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Date of Birth</label>
-            <input type="date" name="dob" value={form.dob} onChange={handleChange}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/10 transition-all" />
+            <style>{`
+              .edit-profile-dob .react-datepicker-wrapper,
+              .edit-profile-dob .react-datepicker__input-container { width: 100%; display: block; }
+              .edit-profile-dob .react-datepicker__input-container input { width: 100%; }
+            `}</style>
+            <div className="edit-profile-dob">
+              <DatePicker
+                selected={form.dob ? new Date(form.dob) : null}
+                onChange={(date) => {
+                  if (date) {
+                    const offset = date.getTimezoneOffset();
+                    const d = new Date(date.getTime() - (offset * 60 * 1000));
+                    setForm({ ...form, dob: d.toISOString().split('T')[0] });
+                  } else {
+                    setForm({ ...form, dob: '' });
+                  }
+                }}
+                customInput={
+                  <input className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-500/10 transition-all" />
+                }
+                dateFormat="yyyy-MM-dd"
+                showYearDropdown
+                showMonthDropdown
+                dropdownMode="select"
+                placeholderText="Select Date of Birth"
+                maxDate={new Date()}
+              />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Gender</label>

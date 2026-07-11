@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../../firebase/config';
 import { useAuth } from '../../context/AuthContext';
 import './LoginPage.css';
 
 const LoginPage = () => {
-  const { loginMockUser } = useAuth();
+  const { currentUser, userProfile, loading: authLoading, loginMockUser } = useAuth();
   const [role, setRole] = useState('student');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,6 +29,15 @@ const LoginPage = () => {
     }
   }, [location]);
 
+  useEffect(() => {
+    // Auto-redirect if already logged in and profile is fully loaded
+    if (!authLoading && currentUser && userProfile) {
+      if (userProfile.role === 'student') navigate('/student');
+      else if (userProfile.role === 'instructor') navigate('/instructor');
+      else if (userProfile.role === 'admin') navigate('/admin');
+    }
+  }, [authLoading, currentUser, userProfile, navigate]);
+
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -41,13 +50,11 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
-      // Hardcoded admin credentials (for a single admin user)
+      // ─── Admin: Hardcoded mock login ───
       const ADMIN_EMAIL = 'admin@drivingschool.com';
       const ADMIN_PASSWORD = 'Admin@123';
 
-      // If the entered credentials match the hardcoded admin, bypass Firebase auth
       if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-        // Force role to admin regardless of the role tab selection
         if (role !== 'admin') {
           setError('Admin login must be selected in the role tabs.');
           setLoading(false);
@@ -66,31 +73,77 @@ const LoginPage = () => {
         return;
       }
 
-      // 1. Sign in using Firebase Auth
+      // ─── Instructor / Student: Try Firestore-first mock login for seeded users ───
+      // This handles users created via the admin seeder who don't have Firebase Auth accounts
+      const DEFAULT_PASSWORD = 'password123';
+
+      const userQuery = query(
+        collection(db, 'users'),
+        where('email', '==', email),
+        where('role', '==', role)
+      );
+      const userSnap = await getDocs(userQuery);
+
+      if (!userSnap.empty && password === DEFAULT_PASSWORD) {
+        const profile = userSnap.docs[0].data();
+        const profileId = userSnap.docs[0].id;
+
+        // Mock login for seeded users (students/instructors) with status validation
+        const mockProfile = {
+          uid: profile.authUid || profileId,
+          id: profileId,
+          name: profile.name || 'User',
+          email: profile.email,
+          role: profile.role,
+          status: profile.status || 'approved',
+          phone: profile.phone || '',
+          progressLevel: profile.progressLevel || '',
+          progress: profile.progress || 0,
+          createdAt: profile.createdAt || new Date().toISOString()
+        };
+
+        // Enforce student approval status before allowing login
+        if (mockProfile.role === 'student' && mockProfile.status !== 'approved') {
+          const errMsg = mockProfile.status === 'rejected' ? 'Your account has been rejected. Contact admin.' : 'Your account is waiting for admin approval.';
+          setError(errMsg);
+          setLoading(false);
+          return;
+        }
+
+        // Proceed with mock login
+        loginMockUser(mockProfile);
+
+        if (role === 'instructor') navigate('/instructor');
+        else if (role === 'student') navigate('/student');
+        else navigate('/');
+
+        setLoading(false);
+        return;
+      }
+
+      // ─── Firebase Auth login (for users created via registration form) ───
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // 2. Fetch profile from Firestore to check role
-      const userDocRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userDocRef);
+      // Fetch profile from Firestore using authUid
+      const q = query(collection(db, 'users'), where('authUid', '==', user.uid));
+      const authUserSnap = await getDocs(q);
 
-      if (userSnap.exists()) {
-        const profile = userSnap.data();
+      if (!authUserSnap.empty) {
+        const profile = authUserSnap.docs[0].data();
+        profile.id = authUserSnap.docs[0].id;
 
-        // Check if selected role matches database role
         if (profile.role !== role) {
           setError(`This account is registered as a ${profile.role.toUpperCase()}, not a ${role.toUpperCase()}.`);
           auth.signOut();
           return;
         }
 
-        // Navigate based on role
-        // Navigate based on role with admin approval check for students
         if (profile.role === 'student') {
-          const status = profile.status ? profile.status.toLowerCase() : 'pending';
-          if (status !== 'approved') {
-            setError('Your account is waiting for admin approval.');
-            auth.signOut();
+          if (profile.status !== 'approved') {
+            const errMsg = profile.status === 'rejected' ? 'Your account has been rejected. Contact admin.' : 'Your account is waiting for admin approval.';
+            setError(errMsg);
+            await auth.signOut();
             return;
           }
           navigate('/student');
@@ -100,14 +153,8 @@ const LoginPage = () => {
           navigate('/admin');
         }
       } else {
-        // If it's a seed account like alex@example.com, the AuthStateChanged in AuthContext
-        // will automatically create the document. We will wait briefly and reload or navigate.
-        if (email === 'alex@example.com') {
-          navigate('/student');
-        } else {
-          setError('User profile not found in database.');
-          auth.signOut();
-        }
+        setError('User profile not found in database.');
+        auth.signOut();
       }
     } catch (err) {
       console.error(err);
@@ -134,8 +181,19 @@ const LoginPage = () => {
       {/* Main Content */}
       <main className="login-main">
         <div className="login-container">
+          {/* Back to Home Link */}
+          <div style={{ marginBottom: '24px', textAlign: 'center' }}>
+            <Link to="/" style={{ color: '#505f76', textDecoration: 'none', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600, transition: 'color 0.2s', ':hover': { color: '#0B2545' } }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_back</span>
+              Back to Home
+            </Link>
+          </div>
+
           {/* Logo Section */}
           <div className="login-header">
+            <div style={{ backgroundColor: 'var(--primary)', color: 'white', width: '48px', height: '48px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', boxShadow: '0 4px 6px -1px rgba(11, 37, 69, 0.2)' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '28px' }}>directions_car</span>
+            </div>
             <h1 className="login-title">Eranga Driving School Login</h1>
             <p className="login-subtitle">Professional Excellence in Driver Education</p>
           </div>
@@ -226,7 +284,7 @@ const LoginPage = () => {
               <div className="form-group">
                 <div className="password-header">
                   <label className="form-label" htmlFor="password">Password</label>
-                  <a className="forgot-password" href="#">Forgot Password?</a>
+                  <Link className="forgot-password" to="/contact">Forgot Password?</Link>
                 </div>
                 <div className="input-wrapper has-action">
                   <span className="material-symbols-outlined input-icon">lock</span>
@@ -287,14 +345,14 @@ const LoginPage = () => {
 
           {/* Additional Help/Support */}
           <div className="login-support-links">
-            <a className="support-link" href="#">
+            <Link className="support-link" to="/contact">
               <span className="material-symbols-outlined">help_outline</span>
               <span>Support Center</span>
-            </a>
-            <a className="support-link" href="#">
+            </Link>
+            <Link className="support-link" to="/about">
               <span className="material-symbols-outlined">privacy_tip</span>
               <span>Privacy Policy</span>
-            </a>
+            </Link>
           </div>
         </div>
       </main>
@@ -303,12 +361,12 @@ const LoginPage = () => {
       <footer className="shared-footer">
         <div className="footer-brand">Eranga Driving School</div>
         <div className="footer-copyright">
-
+          &copy; {new Date().getFullYear()} Eranga Driving School. All rights reserved.
         </div>
         <div className="footer-links">
-          <a href="#">Privacy Policy</a>
-          <a href="#">Terms of Service</a>
-          <a href="#">Contact Us</a>
+          <Link to="/about">Privacy Policy</Link>
+          <Link to="/about">Terms of Service</Link>
+          <Link to="/contact">Contact Us</Link>
         </div>
       </footer>
     </div>

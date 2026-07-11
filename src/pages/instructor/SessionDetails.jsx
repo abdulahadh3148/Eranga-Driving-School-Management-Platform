@@ -1,33 +1,17 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../../firebase/config';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
-import { Calendar, Clock, User, CheckCircle, XCircle, ArrowLeft, FileText, ChevronRight, Star, Play } from 'lucide-react';
+import { Calendar, Clock, User, CheckCircle, ArrowLeft, FileText, ChevronRight, Star, Play } from 'lucide-react';
 
-const colors = {
-  bg: '#090c12',
-  surface: '#0e1420',
-  surface2: '#131a2a',
-  border: '#1c2540',
-  green: '#00e676',
-  greenGlow: 'rgba(0,230,118,0.18)',
-  amber: '#ffab00',
-  amberGlow: 'rgba(255,171,0,0.18)',
-  red: '#ff5252',
-  redGlow: 'rgba(255,82,82,0.15)',
-  text: '#f0f0f0',
-  muted: '#5a6a7a',
-};
-
-const getStatusBadge = (status) => {
+const getBadgeInfo = (status) => {
   switch (status) {
-    case 'completed': return { bg: 'rgba(100,100,120,0.15)', color: '#8a8a9a', border: 'rgba(100,100,120,0.3)' };
-    case 'confirmed': return { bg: colors.greenGlow, color: colors.green, border: 'rgba(0,230,118,0.3)' };
-    case 'pending': return { bg: colors.amberGlow, color: colors.amber, border: 'rgba(255,171,0,0.3)' };
-    case 'cancelled': return { bg: colors.redGlow, color: colors.red, border: 'rgba(255,82,82,0.3)' };
-    default: return { bg: 'rgba(100,100,120,0.15)', color: '#8a8a9a', border: 'rgba(100,100,120,0.3)' };
+    case 'completed': return { className: 'sd-badge-completed', label: 'Completed' };
+    case 'confirmed': return { className: 'sd-badge-upcoming', label: 'Confirmed' };
+    case 'pending': return { className: 'sd-badge-pending', label: 'Pending' };
+    case 'cancelled': case 'missed': return { className: 'sd-badge-missed', label: status };
+    default: return { className: 'sd-badge-pending', label: status || 'Unknown' };
   }
 };
 
@@ -50,7 +34,7 @@ export default function SessionDetails() {
       setError('');
       try {
         if (sessionId) {
-          const docSnap = await getDoc(doc(db, 'bookings', sessionId));
+          const docSnap = await getDoc(doc(db, 'sessions', sessionId));
           if (docSnap.exists()) {
             const data = docSnap.data();
             if (data.instructorId === currentUser.uid) {
@@ -62,10 +46,7 @@ export default function SessionDetails() {
             setError('Session not found.');
           }
         } else {
-          const q = query(
-            collection(db, 'bookings'),
-            where('instructorId', '==', currentUser.uid)
-          );
+          const q = query(collection(db, 'sessions'), where('instructorId', '==', currentUser.uid));
           const snap = await getDocs(q);
           const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           data.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -78,83 +59,79 @@ export default function SessionDetails() {
         setLoading(false);
       }
     };
-
     fetchSessionOrHistory();
   }, [currentUser, sessionId]);
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div style={{ width: 40, height: 40, border: `3px solid ${colors.green}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
+    return <div style={{ textAlign: 'center', padding: '4rem 1rem', color: '#6b7280', fontWeight: 600 }}>Loading...</div>;
   }
 
-  // --- Single Session Detail View ---
+  // ─── Single Session Detail View ─── 
   if (sessionId && booking) {
-    const badge = getStatusBadge(booking.status);
+    const badge = getBadgeInfo(booking.status);
+    const isActionable = booking.status === 'confirmed' || booking.status === 'pending';
+
     return (
-      <div style={{ maxWidth: 600, margin: '0 auto' }}>
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-          style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+      <div style={{ maxWidth: 600, margin: '0 auto', fontFamily: 'var(--font-body)' }}>
+        {/* Back Button + Title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
           <button onClick={() => setSearchParams({})}
-            style={{ width: 40, height: 40, borderRadius: 12, background: colors.surface, border: `1px solid ${colors.border}`, color: colors.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            style={{ width: 40, height: 40, borderRadius: '0.75rem', background: '#f3f4f6', border: '1px solid #e5e7eb', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: colors.text, fontFamily: "'Barlow Condensed', sans-serif" }}>Session Details</h1>
-            <p style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Review performance and details</p>
+            <h1 style={{ fontSize: '1.375rem', fontWeight: 800, color: '#111827', margin: 0 }}>Session Details</h1>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', fontWeight: 500, marginTop: '0.125rem' }}>Review performance and details</p>
           </div>
-        </motion.div>
+        </div>
 
         {error && (
-          <div style={{ padding: 16, background: colors.redGlow, border: `1px solid rgba(255,82,82,0.3)`, borderRadius: 14, color: colors.red, fontSize: 14, marginBottom: 16 }}>
+          <div style={{ padding: '1rem', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '0.75rem', color: '#991b1b', fontSize: '0.875rem', marginBottom: '1rem' }}>
             {error}
           </div>
         )}
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          style={{ background: colors.surface, borderRadius: 20, border: `1px solid ${colors.border}`, padding: 24 }}>
-
+        {/* Main Card */}
+        <div style={{ background: '#fff', borderRadius: '1.25rem', border: '1px solid #e5e7eb', padding: '1.5rem', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+          
           {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `1px solid ${colors.border}`, paddingBottom: 16, marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f3f4f6', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
             <div>
-              <span style={{ fontSize: 11, fontWeight: 700, color: colors.green, textTransform: 'uppercase', letterSpacing: 1.5 }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '1px' }}>
                 {booking.sessionType || 'Driving Lesson'}
               </span>
-              <h2 style={{ fontSize: 20, fontWeight: 800, color: colors.text, marginTop: 4, fontFamily: "'Barlow Condensed', sans-serif" }}>{booking.studentName || 'Student'}</h2>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827', marginTop: '0.25rem' }}>{booking.studentName || 'Student'}</h2>
             </div>
-            <span style={{ padding: '6px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`, textTransform: 'capitalize' }}>
-              {booking.status}
+            <span className={badge.className} style={{ padding: '0.35rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 700, textTransform: 'capitalize' }}>
+              {badge.label}
             </span>
           </div>
 
           {/* Info Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, background: colors.surface2 }}>
-              <Calendar size={16} color={colors.green} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.875rem', borderRadius: '0.75rem', background: '#f9fafb', border: '1px solid #f3f4f6' }}>
+              <Calendar size={18} color="var(--primary)" />
               <div>
-                <p style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Date</p>
-                <p style={{ fontSize: 14, fontWeight: 700, color: colors.text, marginTop: 2 }}>{booking.date}</p>
+                <p style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: 600 }}>Date</p>
+                <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#111827', marginTop: '0.125rem' }}>{booking.date}</p>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, background: colors.surface2 }}>
-              <Clock size={16} color={colors.amber} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.875rem', borderRadius: '0.75rem', background: '#f9fafb', border: '1px solid #f3f4f6' }}>
+              <Clock size={18} color="#f59e0b" />
               <div>
-                <p style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Time Slot</p>
-                <p style={{ fontSize: 14, fontWeight: 700, color: colors.text, marginTop: 2 }}>{booking.timeSlot}</p>
+                <p style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: 600 }}>Time Slot</p>
+                <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#111827', marginTop: '0.125rem' }}>{booking.timeSlot}</p>
               </div>
             </div>
           </div>
 
-          {/* Skills Checked (if available) */}
+          {/* Skills Checked */}
           {booking.skillsChecked && booking.skillsChecked.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: colors.text, marginBottom: 10 }}>Skills Assessed</h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ marginBottom: '1.25rem' }}>
+              <h3 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#111827', marginBottom: '0.625rem' }}>Skills Assessed</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                 {booking.skillsChecked.map(skill => (
-                  <span key={skill} style={{ padding: '6px 12px', borderRadius: 10, background: colors.greenGlow, color: colors.green, fontSize: 12, fontWeight: 600, border: '1px solid rgba(0,230,118,0.2)' }}>
+                  <span key={skill} style={{ padding: '0.35rem 0.75rem', borderRadius: '0.625rem', background: '#dcfce7', color: '#166534', fontSize: '0.8rem', fontWeight: 600 }}>
                     ✓ {skill}
                   </span>
                 ))}
@@ -162,22 +139,22 @@ export default function SessionDetails() {
             </div>
           )}
 
-          {/* Rating (if available) */}
+          {/* Rating */}
           {booking.rating && (
-            <div style={{ marginBottom: 20 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: colors.text, marginBottom: 10 }}>Rating</h3>
-              <div style={{ display: 'flex', gap: 4 }}>
+            <div style={{ marginBottom: '1.25rem' }}>
+              <h3 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#111827', marginBottom: '0.5rem' }}>Rating</h3>
+              <div style={{ display: 'flex', gap: '0.25rem' }}>
                 {[1, 2, 3, 4, 5].map(i => (
-                  <Star key={i} size={20} fill={i <= booking.rating ? colors.amber : 'transparent'} color={i <= booking.rating ? colors.amber : colors.border} />
+                  <Star key={i} size={22} fill={i <= booking.rating ? '#f59e0b' : 'transparent'} color={i <= booking.rating ? '#f59e0b' : '#d1d5db'} />
                 ))}
               </div>
             </div>
           )}
 
           {/* Notes/Feedback */}
-          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 16 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: colors.text, marginBottom: 10 }}>Performance Notes & Feedback</h3>
-            <div style={{ padding: 16, borderRadius: 14, background: colors.surface2, border: `1px solid ${colors.border}`, fontSize: 14, color: booking.instructorNotes || booking.feedback ? colors.text : colors.muted, lineHeight: 1.7, minHeight: 80 }}>
+          <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: '1rem' }}>
+            <h3 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#111827', marginBottom: '0.625rem' }}>Notes & Feedback</h3>
+            <div style={{ padding: '1rem', borderRadius: '0.75rem', background: '#f9fafb', border: '1px solid #f3f4f6', fontSize: '0.875rem', color: booking.instructorNotes || booking.feedback ? '#374151' : '#9ca3af', lineHeight: 1.7, minHeight: 60 }}>
               {booking.instructorNotes || booking.feedback || (
                 <span style={{ fontStyle: 'italic' }}>No notes provided for this session.</span>
               )}
@@ -185,107 +162,116 @@ export default function SessionDetails() {
           </div>
 
           {/* Action Buttons */}
-          {(booking.status === 'confirmed' || booking.status === 'pending') && (
-            <div style={{ display: 'flex', gap: 12, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${colors.border}` }}>
+          {isActionable && (
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #f3f4f6' }}>
               <Link to={`/instructor/active-session?id=${booking.id}`}
                 style={{
-                  flex: 1, padding: '14px 0', borderRadius: 14, border: 'none',
-                  background: colors.green, color: '#000', fontSize: 14, fontWeight: 800,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  textDecoration: 'none', fontFamily: "'Barlow Condensed', sans-serif",
-                  letterSpacing: 0.5, boxShadow: `0 0 30px ${colors.greenGlow}`
+                  flex: 1, padding: '0.875rem 0', borderRadius: '0.75rem', border: 'none',
+                  background: '#16a34a', color: '#fff', fontSize: '0.875rem', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', textDecoration: 'none'
                 }}>
-                <Play size={16} /> START SESSION
+                <Play size={16} /> Start Session
               </Link>
-              <Link to={`/instructor/mark-complete?id=${booking.id}`}
-                style={{
-                  flex: 1, padding: '14px 0', borderRadius: 14,
-                  background: colors.surface2, border: `1px solid ${colors.border}`,
-                  color: colors.text, fontSize: 14, fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  textDecoration: 'none', fontFamily: "'Barlow Condensed', sans-serif"
-                }}>
-                <CheckCircle size={16} /> QUICK COMPLETE
-              </Link>
+                <Link
+                  to={`/instructor/mark-session/${booking.studentId}`}
+                  style={{
+                    flex: 1,
+                    padding: '0.875rem 0',
+                    borderRadius: '0.75rem',
+                    background: '#2563eb',
+                    color: '#fff',
+                    fontSize: '0.875rem',
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    textDecoration: 'none'
+                  }}
+                >
+                  Mark Session
+                </Link>
             </div>
           )}
-        </motion.div>
+        </div>
       </div>
     );
   }
 
-  // --- Session History List ---
+  // ─── Session History List ───
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: colors.text, fontFamily: "'Barlow Condensed', sans-serif" }}>Training History</h1>
-        <p style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>Review all your past and upcoming sessions.</p>
-      </motion.div>
+    <div style={{ maxWidth: 600, margin: '0 auto', fontFamily: 'var(--font-body)' }}>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', marginBottom: '0.25rem' }}>Training History</h1>
+      <p style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: 500, marginBottom: '1.5rem' }}>Review all your past and upcoming sessions.</p>
 
       {error && (
-        <div style={{ padding: 16, background: colors.redGlow, border: `1px solid rgba(255,82,82,0.3)`, borderRadius: 14, color: colors.red, fontSize: 14, marginBottom: 16 }}>
+        <div style={{ padding: '1rem', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '0.75rem', color: '#991b1b', fontSize: '0.875rem', marginBottom: '1rem' }}>
           {error}
         </div>
       )}
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-        style={{ background: colors.surface, borderRadius: 20, border: `1px solid ${colors.border}`, overflow: 'hidden' }}>
-
-        {history.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center' }}>
-            <FileText size={48} color={colors.border} style={{ margin: '0 auto 16px', display: 'block' }} />
-            <p style={{ color: colors.muted, fontSize: 15 }}>No training sessions recorded.</p>
-          </div>
-        ) : (
-          <div>
-            {history.map((s, i) => {
-              const badge = getStatusBadge(s.status);
-              return (
-                <motion.div key={s.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
-                  onClick={() => setSearchParams({ id: s.id })}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
-                    cursor: 'pointer', transition: 'background 0.2s ease'
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = colors.surface2}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                    {/* Date block */}
-                    <div style={{
-                      width: 48, height: 48, borderRadius: 12, background: colors.surface2,
-                      border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', justifyContent: 'center'
-                    }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: colors.green, textTransform: 'uppercase' }}>
-                        {new Date(s.date).toLocaleDateString('en-US', { month: 'short' })}
-                      </span>
-                      <span style={{ fontSize: 18, fontWeight: 900, color: colors.text, lineHeight: 1, fontFamily: "'Barlow Condensed', sans-serif" }}>
-                        {new Date(s.date).getDate()}
-                      </span>
-                    </div>
-                    <div>
-                      <p style={{ fontWeight: 700, color: colors.text, fontSize: 15 }}>{s.studentName || 'Student'}</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                        <Clock size={12} color={colors.muted} />
-                        <span style={{ fontSize: 12, color: colors.muted }}>{s.timeSlot}</span>
-                        <span style={{ color: colors.border }}>•</span>
-                        <span style={{ fontSize: 11, color: colors.green, fontWeight: 600, textTransform: 'uppercase' }}>{s.sessionType || 'Driving'}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`, textTransform: 'capitalize' }}>
-                      {s.status}
+      {history.length === 0 ? (
+        <div style={{ padding: '3rem 1rem', textAlign: 'center', background: '#f9fafb', borderRadius: '1rem', border: '2px dashed #e5e7eb', color: '#6b7280', fontWeight: 600 }}>
+          <FileText size={40} color="#d1d5db" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+          No training sessions recorded.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {history.map(s => {
+            const badge = getBadgeInfo(s.status);
+            return (
+              <div key={s.id} onClick={() => setSearchParams({ id: s.id })}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '1rem', background: '#fff', borderRadius: '1rem',
+                  border: '1px solid #e5e7eb', cursor: 'pointer',
+                  transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {/* Date block */}
+                  <div style={{
+                    width: 48, height: 48, borderRadius: '0.75rem', background: '#f3f4f6',
+                    border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <span style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase' }}>
+                      {new Date(s.date).toLocaleDateString('en-US', { month: 'short' })}
                     </span>
-                    <ChevronRight size={16} color={colors.muted} />
+                    <span style={{ fontSize: '1.125rem', fontWeight: 900, color: '#111827', lineHeight: 1 }}>
+                      {new Date(s.date).getDate()}
+                    </span>
                   </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
-      </motion.div>
+                  <div>
+                    <p style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem' }}>{s.studentName || 'Student'}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: '0.2rem' }}>
+                      <Clock size={12} color="#6b7280" />
+                      <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{s.timeSlot}</span>
+                      <span style={{ color: '#d1d5db' }}>•</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600, textTransform: 'uppercase' }}>{s.sessionType || 'Driving'}</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span className={badge.className} style={{ padding: '0.3rem 0.625rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'capitalize' }}>
+                    {badge.label}
+                  </span>
+                  <ChevronRight size={16} color="#9ca3af" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Badge styles injected via style tag */}
+      <style>{`
+        .sd-badge-upcoming { background: #fef9c3; color: #a16207; }
+        .sd-badge-completed { background: #dcfce7; color: #166534; }
+        .sd-badge-missed { background: #fee2e2; color: #991b1b; }
+        .sd-badge-pending { background: #fef9c3; color: #a16207; }
+      `}</style>
     </div>
   );
 }

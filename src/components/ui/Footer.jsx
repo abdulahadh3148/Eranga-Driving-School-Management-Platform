@@ -22,11 +22,15 @@ export default function Footer() {
               Sri Lanka's most trusted driving school, helping students master the road safely since 2010. 1000+ graduates with a 98% first-attempt pass rate.
             </p>
             <div className="flex gap-3">
-              {[{ Icon: Globe, href: '#' }, { Icon: Camera, href: '#' }, { Icon: Video, href: '#' }].map(({ Icon, href }, i) => (
-                <a key={i} href={href} className="w-9 h-9 rounded-xl bg-white/10 hover:bg-primary/50 flex items-center justify-center transition-colors">
-                  <Icon size={16} />
-                </a>
-              ))}
+              <a href="https://www.facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="w-9 h-9 rounded-xl bg-white/10 hover:bg-primary/50 flex items-center justify-center transition-colors">
+                <Globe size={16} />
+              </a>
+              <a href="https://www.instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="w-9 h-9 rounded-xl bg-white/10 hover:bg-primary/50 flex items-center justify-center transition-colors">
+                <Camera size={16} />
+              </a>
+              <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" aria-label="YouTube" className="w-9 h-9 rounded-xl bg-white/10 hover:bg-primary/50 flex items-center justify-center transition-colors">
+                <Video size={16} />
+              </a>
             </div>
           </div>
 
@@ -100,9 +104,9 @@ export default function Footer() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row justify-between items-center gap-3">
           <p className="text-gray-500 text-sm">© {year} Eranga Driving School. All rights reserved.</p>
           <div className="flex gap-4">
-            {['Privacy Policy', 'Terms of Service', 'Sitemap'].map(t => (
-              <a key={t} href="#" className="text-gray-500 hover:text-primary text-sm transition-colors">{t}</a>
-            ))}
+            <Link to="/about" className="text-gray-500 hover:text-primary text-sm transition-colors">Privacy Policy</Link>
+            <Link to="/about" className="text-gray-500 hover:text-primary text-sm transition-colors">Terms of Service</Link>
+            <Link to="/contact" className="text-gray-500 hover:text-primary text-sm transition-colors">Sitemap</Link>
           </div>
         </div>
       </div>

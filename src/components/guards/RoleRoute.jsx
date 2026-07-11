@@ -2,12 +2,13 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 export default function RoleRoute({ children, role }) {
-  const { userProfile, loading } = useAuth();
+  const { currentUser, userProfile, loading } = useAuth();
 
-  if (loading) {
+  // Wait if global loading is true, OR if the user is authenticated but their profile hasn't been fetched yet
+  if (loading || (currentUser && !userProfile)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
-        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0a' }}>
+        <div style={{ width: 48, height: 48, border: '4px solid #2563eb', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
       </div>
     );
   }

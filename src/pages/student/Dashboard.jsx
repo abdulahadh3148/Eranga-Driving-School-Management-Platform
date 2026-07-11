@@ -4,13 +4,14 @@ import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase/config';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { useNavigate, Link } from 'react-router-dom';
-import { TrendingUp, CalendarDays, BookOpen, CreditCard, ChevronRight, Clock } from 'lucide-react';
+import { TrendingUp, CalendarDays, BookOpen, CreditCard, ChevronRight, Clock, Package } from 'lucide-react';
 
 const steps = ['Medical Check', 'Theory Classes', 'Written Exam', 'Practical Lessons', 'Trial Test', 'Road Test', 'Licence Issued'];
 
 export default function StudentDashboard() {
   const { currentUser, userProfile } = useAuth();
   const [bookings, setBookings] = useState([]);
+  const [activePackage, setActivePackage] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -20,13 +21,33 @@ export default function StudentDashboard() {
     return unsub;
   }, [currentUser]);
 
+  useEffect(() => {
+    if (!currentUser) return;
+    const q = query(
+      collection(db, 'student_packages'), 
+      where('student_id', '==', currentUser.uid),
+      where('status', '==', 'active')
+    );
+    const unsub = onSnapshot(q, snap => {
+      if (!snap.empty) {
+        setActivePackage({ id: snap.docs[0].id, ...snap.docs[0].data() });
+      } else {
+        setActivePackage(null);
+      }
+    });
+    return unsub;
+  }, [currentUser]);
+
   const upcoming = bookings.filter(b => b.status === 'confirmed' || b.status === 'pending');
   const currentStepIdx = steps.indexOf(userProfile?.currentStep || 'Medical Check');
-  const progress = userProfile?.progress || 0;
+  
+  const totalClasses = activePackage?.total_classes || userProfile?.classesTotal || 0;
+  const classesDone = activePackage?.completed_classes || userProfile?.classesCompleted || 0;
+  const progress = totalClasses > 0 ? Math.round((classesDone / totalClasses) * 100) : (userProfile?.progress || 0);
 
   const stats = [
     { label: 'Progress', value: `${progress}%`, icon: TrendingUp, color: 'orange', sub: 'Overall completion' },
-    { label: 'Classes Done', value: userProfile?.classesCompleted || 0, icon: BookOpen, color: 'blue', sub: `of ${userProfile?.classesTotal || 18} total` },
+    { label: 'Classes Done', value: classesDone, icon: BookOpen, color: 'blue', sub: `of ${totalClasses || '-'} total` },
     { label: 'Upcoming', value: upcoming.length, icon: CalendarDays, color: 'green', sub: 'sessions booked' },
     { label: 'Fees Due', value: `Rs. ${(userProfile?.outstandingFees || 0).toLocaleString()}`, icon: CreditCard, color: 'red', sub: 'outstanding balance' },
   ];
@@ -36,9 +57,16 @@ export default function StudentDashboard() {
   return (
     <div className="space-y-6">
       {/* Welcome */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-gray-900">Welcome back, {userProfile?.name?.split(' ')[0] || 'Student'}! 👋</h1>
-        <p className="text-gray-500 text-sm mt-1">Here's an overview of your driving progress.</p>
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-between items-end">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Welcome back, {userProfile?.name?.split(' ')[0] || 'Student'}! 👋</h1>
+          <p className="text-gray-500 text-sm mt-1">Here's an overview of your driving progress.</p>
+        </div>
+        {!activePackage && (
+          <Link to="/student/packages" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors">
+            <Package size={16} /> Enroll in Package
+          </Link>
+        )}
       </motion.div>
 
       {/* Stats */}
@@ -62,14 +90,14 @@ export default function StudentDashboard() {
           className="lg:col-span-2 bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-bold text-gray-900">Your Progress</h2>
-            <Link to="/student/progress" className="text-primary text-sm font-medium hover:text-primary flex items-center gap-1">
-              View Details <ChevronRight size={14} />
+            <Link to="/student/plan" className="text-primary text-sm font-medium hover:text-primary flex items-center gap-1">
+              View Training Plan <ChevronRight size={14} />
             </Link>
           </div>
           {/* Progress bar */}
           <div className="mb-5">
             <div className="flex justify-between text-xs text-gray-500 mb-1.5">
-              <span>Overall Completion</span><span>{progress}%</span>
+              <span>Practical Completion</span><span>{progress}%</span>
             </div>
             <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
               <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 1, delay: 0.3 }}
@@ -142,7 +170,7 @@ export default function StudentDashboard() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { label: 'Book Session', path: '/student/book', icon: '📅', color: 'bg-primary/5 hover:bg-orange-100' },
-            { label: 'View Progress', path: '/student/progress', icon: '📊', color: 'bg-blue-50 hover:bg-blue-100' },
+            { label: 'My Training Plan', path: '/student/plan', icon: '📝', color: 'bg-blue-50 hover:bg-blue-100' },
             { label: 'Make Payment', path: '/student/payment', icon: '💳', color: 'bg-green-50 hover:bg-green-100' },
             { label: 'My Profile', path: '/student/profile', icon: '👤', color: 'bg-purple-50 hover:bg-purple-100' },
           ].map(({ label, path, icon, color }, i) => (

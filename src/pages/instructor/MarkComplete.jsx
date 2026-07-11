@@ -1,24 +1,9 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { db } from '../../firebase/config';
 import { collection, query, where, getDocs, doc, updateDoc, addDoc, increment } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { CheckCircle2, AlertCircle, ArrowLeft, Clock, User, Calendar } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-
-const colors = {
-  bg: '#090c12',
-  surface: '#0e1420',
-  surface2: '#131a2a',
-  border: '#1c2540',
-  green: '#00e676',
-  greenDark: '#00c853',
-  greenGlow: 'rgba(0,230,118,0.18)',
-  amber: '#ffab00',
-  red: '#ff5252',
-  text: '#f0f0f0',
-  muted: '#5a6a7a',
-};
 
 export default function MarkComplete() {
   const { currentUser } = useAuth();
@@ -31,12 +16,14 @@ export default function MarkComplete() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [isTrialTest, setIsTrialTest] = useState(false);
+  const [trialPassed, setTrialPassed] = useState(false);
 
   useEffect(() => {
     if (!currentUser) return;
     const fetchSessions = async () => {
       try {
-        const q = query(collection(db, 'bookings'),
+        const q = query(collection(db, 'sessions'),
           where('instructorId', '==', currentUser.uid),
           where('status', '==', 'confirmed')
         );
@@ -63,7 +50,7 @@ export default function MarkComplete() {
     try {
       const session = sessions.find(s => s.id === selectedSession);
 
-      await updateDoc(doc(db, 'bookings', selectedSession), {
+      await updateDoc(doc(db, 'sessions', selectedSession), {
         status: 'completed',
         instructorNotes: notes,
         completedAt: new Date().toISOString()
@@ -71,17 +58,21 @@ export default function MarkComplete() {
 
       if (session?.studentId) {
         const stuRef = doc(db, 'users', session.studentId);
-        await updateDoc(stuRef, {
+        let updates = {
           classesCompleted: increment(1),
           progress: increment(5)
-        });
+        };
+        if (isTrialTest) {
+          updates.trialPassed = trialPassed;
+        }
+        await updateDoc(stuRef, updates);
 
         await addDoc(collection(db, 'notifications'), {
           userId: session.studentId,
           studentId: session.studentId,
           title: 'Session Completed',
-          message: `Your session on ${session.date} (${session.timeSlot}) has been marked completed by your instructor.`,
-          body: `Your session on ${session.date} (${session.timeSlot}) has been marked completed by your instructor.`,
+          message: `Your session on ${session.date} (${session.time}) has been marked completed by your instructor.`,
+          body: `Your session on ${session.date} (${session.time}) has been marked completed by your instructor.`,
           type: 'booking',
           icon: '🎓',
           isRead: false,
@@ -102,113 +93,132 @@ export default function MarkComplete() {
 
   const selectedData = sessions.find(s => s.id === selectedSession);
 
+  // ─── Success State ───
   if (success) {
     return (
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-        style={{ maxWidth: 420, margin: '60px auto', padding: 32, background: colors.surface, borderRadius: 20, border: `1px solid ${colors.border}`, textAlign: 'center' }}>
-        <div style={{ width: 64, height: 64, borderRadius: '50%', background: colors.greenGlow, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-          <CheckCircle2 size={32} color={colors.green} />
+      <div style={{ maxWidth: 420, margin: '4rem auto', padding: '2rem', background: '#fff', borderRadius: '1.25rem', border: '1px solid #e5e7eb', textAlign: 'center', fontFamily: 'var(--font-body)' }}>
+        <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
+          <CheckCircle2 size={32} color="#16a34a" />
         </div>
-        <h2 style={{ color: colors.text, fontSize: 22, fontWeight: 800, marginBottom: 8, fontFamily: "'Barlow Condensed', sans-serif" }}>Session Completed!</h2>
-        <p style={{ color: colors.muted, fontSize: 14, lineHeight: 1.6 }}>The session has been marked complete and the student's progress has been updated.</p>
-      </motion.div>
+        <h2 style={{ color: '#111827', fontSize: '1.375rem', fontWeight: 800, marginBottom: '0.5rem' }}>Session Completed!</h2>
+        <p style={{ color: '#6b7280', fontSize: '0.875rem', lineHeight: 1.6 }}>The session has been marked complete and the student's progress has been updated.</p>
+      </div>
     );
   }
 
+  // ─── Main Form ───
   return (
-    <div style={{ maxWidth: 560, margin: '0 auto' }}>
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-        style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+    <div style={{ maxWidth: 560, margin: '0 auto', fontFamily: 'var(--font-body)' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
         <button onClick={() => navigate('/instructor')}
-          style={{ width: 40, height: 40, borderRadius: 12, background: colors.surface, border: `1px solid ${colors.border}`, color: colors.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          style={{ width: 40, height: 40, borderRadius: '0.75rem', background: '#f3f4f6', border: '1px solid #e5e7eb', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <ArrowLeft size={18} />
         </button>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: colors.text, fontFamily: "'Barlow Condensed', sans-serif" }}>Mark Complete</h1>
-          <p style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Record completion and add notes</p>
+          <h1 style={{ fontSize: '1.375rem', fontWeight: 800, color: '#111827', margin: 0 }}>Mark Complete</h1>
+          <p style={{ fontSize: '0.8rem', color: '#6b7280', fontWeight: 500, marginTop: '0.125rem' }}>Record completion and add notes</p>
         </div>
-      </motion.div>
+      </div>
 
-      <motion.form onSubmit={handleSubmit} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-        style={{ background: colors.surface, borderRadius: 20, border: `1px solid ${colors.border}`, padding: 24 }}>
-
+      {/* Form Card */}
+      <form onSubmit={handleSubmit} style={{ background: '#fff', borderRadius: '1.25rem', border: '1px solid #e5e7eb', padding: '1.5rem', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center' }}>
-            <div style={{ width: 32, height: 32, border: `3px solid ${colors.green}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }} />
-          </div>
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', fontWeight: 600 }}>Loading sessions...</div>
         ) : sessions.length === 0 ? (
-          <div style={{ padding: 24, background: 'rgba(255,171,0,0.08)', borderRadius: 14, border: '1px solid rgba(255,171,0,0.2)', display: 'flex', gap: 12, alignItems: 'center' }}>
-            <AlertCircle size={20} color={colors.amber} />
-            <p style={{ color: colors.amber, fontSize: 14 }}>No confirmed sessions eligible to be marked complete.</p>
+          <div style={{ padding: '1.25rem', background: '#fffbeb', borderRadius: '0.75rem', border: '1px solid #fde68a', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <AlertCircle size={20} color="#f59e0b" />
+            <p style={{ color: '#92400e', fontSize: '0.875rem', fontWeight: 500 }}>No confirmed sessions eligible to be marked complete.</p>
           </div>
         ) : (
           <>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: colors.text, marginBottom: 8 }}>Select Session</label>
+            {/* Session Select */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#111827', marginBottom: '0.5rem' }}>Select Session</label>
               <select required value={selectedSession} onChange={e => setSelectedSession(e.target.value)}
-                style={{ width: '100%', padding: '14px 16px', borderRadius: 14, background: colors.surface2, border: `1px solid ${colors.border}`, color: colors.text, fontSize: 14, outline: 'none', cursor: 'pointer', appearance: 'none' }}>
-                <option value="" style={{ color: colors.muted }}>-- Choose a session --</option>
+                style={{ width: '100%', padding: '0.875rem 1rem', borderRadius: '0.75rem', background: '#f9fafb', border: '1px solid #e5e7eb', color: '#111827', fontSize: '0.875rem', outline: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
+                <option value="">-- Choose a session --</option>
                 {sessions.map(s => (
-                  <option key={s.id} value={s.id} style={{ background: colors.surface2, color: colors.text }}>
+                  <option key={s.id} value={s.id}>
                     {s.date} | {s.timeSlot} - {s.studentName || 'Student'}
                   </option>
                 ))}
               </select>
             </div>
 
+            {/* Selected Session Info */}
             {selectedData && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                style={{ background: colors.surface2, borderRadius: 14, padding: 16, marginBottom: 20, border: `1px solid ${colors.border}` }}>
-                <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <User size={14} color={colors.green} />
-                    <span style={{ fontSize: 13, color: colors.text, fontWeight: 600 }}>{selectedData.studentName || 'Student'}</span>
+              <div style={{ background: '#f9fafb', borderRadius: '0.75rem', padding: '1rem', marginBottom: '1.25rem', border: '1px solid #f3f4f6' }}>
+                <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <User size={14} color="var(--primary)" />
+                    <span style={{ fontSize: '0.825rem', color: '#111827', fontWeight: 600 }}>{selectedData.studentName || 'Student'}</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Calendar size={14} color={colors.amber} />
-                    <span style={{ fontSize: 13, color: colors.muted }}>{selectedData.date}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Calendar size={14} color="#f59e0b" />
+                    <span style={{ fontSize: '0.825rem', color: '#6b7280' }}>{selectedData.date}</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Clock size={14} color={colors.amber} />
-                    <span style={{ fontSize: 13, color: colors.muted }}>{selectedData.timeSlot}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Clock size={14} color="#f59e0b" />
+                    <span style={{ fontSize: '0.825rem', color: '#6b7280' }}>{selectedData.timeSlot}</span>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             )}
 
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: colors.text, marginBottom: 8 }}>Performance Notes (Optional)</label>
+            {/* Notes */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#111827', marginBottom: '0.5rem' }}>Performance Notes (Optional)</label>
               <textarea rows={4} value={notes} onChange={e => setNotes(e.target.value)}
                 placeholder="e.g. Good steering control, needs work on clutch..."
-                style={{ width: '100%', padding: '14px 16px', borderRadius: 14, background: colors.surface2, border: `1px solid ${colors.border}`, color: colors.text, fontSize: 14, outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.6 }} />
-              <p style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>These notes are visible to the student.</p>
+                style={{ width: '100%', padding: '0.875rem 1rem', borderRadius: '0.75rem', background: '#f9fafb', border: '1px solid #e5e7eb', color: '#111827', fontSize: '0.875rem', outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.6, boxSizing: 'border-box' }} />
+              <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.5rem' }}>These notes are visible to the student.</p>
             </div>
 
+            {/* Trial Test Section */}
+            <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f9fafb', borderRadius: '0.75rem', border: '1px solid #f3f4f6' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', marginBottom: isTrialTest ? '1rem' : 0 }}>
+                <input
+                  type="checkbox"
+                  checked={isTrialTest}
+                  onChange={e => setIsTrialTest(e.target.checked)}
+                  style={{ width: 20, height: 20, accentColor: '#16a34a', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#111827' }}>Is this a Final Trial Test?</span>
+              </label>
+
+              {isTrialTest && (
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <label style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem', borderRadius: '0.75rem', background: trialPassed ? '#dcfce7' : '#fff', border: `1.5px solid ${trialPassed ? '#86efac' : '#e5e7eb'}`, cursor: 'pointer' }}>
+                    <input type="radio" name="trialResult" checked={trialPassed} onChange={() => setTrialPassed(true)} style={{ display: 'none' }} />
+                    <CheckCircle2 size={16} color={trialPassed ? '#16a34a' : '#9ca3af'} />
+                    <span style={{ color: trialPassed ? '#166534' : '#6b7280', fontWeight: 700, fontSize: '0.825rem' }}>Passed</span>
+                  </label>
+                  <label style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem', borderRadius: '0.75rem', background: !trialPassed ? '#fee2e2' : '#fff', border: `1.5px solid ${!trialPassed ? '#fecaca' : '#e5e7eb'}`, cursor: 'pointer' }}>
+                    <input type="radio" name="trialResult" checked={!trialPassed} onChange={() => setTrialPassed(false)} style={{ display: 'none' }} />
+                    <AlertCircle size={16} color={!trialPassed ? '#dc2626' : '#9ca3af'} />
+                    <span style={{ color: !trialPassed ? '#991b1b' : '#6b7280', fontWeight: 700, fontSize: '0.825rem' }}>Failed</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Submit */}
             <button type="submit" disabled={submitting || !selectedSession}
               style={{
-                width: '100%', padding: '16px 0', borderRadius: 14, border: 'none',
-                background: selectedSession ? colors.green : colors.border,
-                color: selectedSession ? '#000' : colors.muted,
-                fontSize: 15, fontWeight: 800, cursor: selectedSession ? 'pointer' : 'not-allowed',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.5px',
+                width: '100%', padding: '1rem 0', borderRadius: '0.75rem', border: 'none',
+                background: selectedSession ? '#16a34a' : '#e5e7eb',
+                color: selectedSession ? '#fff' : '#9ca3af',
+                fontSize: '1rem', fontWeight: 800, cursor: selectedSession ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
                 transition: 'all 0.2s ease', opacity: submitting ? 0.6 : 1,
-                boxShadow: selectedSession ? `0 0 30px ${colors.greenGlow}` : 'none'
+                boxShadow: selectedSession ? '0 4px 14px rgba(22, 163, 74, 0.3)' : 'none'
               }}>
-              <CheckCircle2 size={18} /> {submitting ? 'SAVING...' : 'MARK AS COMPLETE'}
+              <CheckCircle2 size={20} /> {submitting ? 'Saving...' : 'Mark as Complete'}
             </button>
           </>
         )}
-      </motion.form>
-
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        select option { background: #131a2a; color: #f0f0f0; }
-        textarea::placeholder { color: #5a6a7a; }
-        select:focus, textarea:focus { border-color: #00e676 !important; box-shadow: 0 0 0 3px rgba(0,230,118,0.12); }
-      `}</style>
+      </form>
     </div>
   );
 }

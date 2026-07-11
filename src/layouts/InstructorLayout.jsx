@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
   Calendar,
@@ -6,7 +6,8 @@ import {
   Users,
   Clock,
   LogOut,
-  Bell
+  Bell,
+  CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import '../pages/instructor/instructor.css';
@@ -14,6 +15,7 @@ import '../pages/instructor/instructor.css';
 export default function InstructorLayout() {
   const { currentUser, userProfile, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const getGreeting = () => {
     const hr = new Date().getHours();
@@ -23,84 +25,77 @@ export default function InstructorLayout() {
   };
 
   const menuItems = [
-    { icon: Home, label: 'Dashboard', path: '/instructor' },
+    { icon: Home, label: 'Dashboard', path: '/instructor/dashboard' },
     { icon: Calendar, label: 'Schedule', path: '/instructor/schedule' },
-    { icon: PlayCircle, label: 'Active', path: '/instructor/active-session', isPlay: true },
     { icon: Users, label: 'Students', path: '/instructor/students' },
+    { icon: CheckCircle, label: 'Attendance', path: '/instructor/attendance' },
     { icon: Clock, label: 'Hours', path: '/instructor/availability' },
   ];
 
   const handleLogout = async () => {
     try {
       await logout();
+      navigate('/login', { replace: true });
     } catch (err) {
       console.error('Logout failed:', err);
     }
   };
 
   return (
-    <div className="instructor-portal">
-      {/* Top bar */}
-      <header className="ins-topbar">
-        <div className="ins-topbar-left">
-          <span className="ins-greeting">
-            {getGreeting()}, {userProfile?.name?.split(' ')[0] || 'Instructor'}
-          </span>
-          <span className="ins-greeting-sub">Eranga Driving School</span>
-        </div>
-        <div className="ins-topbar-right">
-          <button className="ins-notification-btn" aria-label="Notifications">
-            <Bell size={20} />
-            <span className="ins-notification-badge" />
-          </button>
-          <div className="ins-avatar" title={userProfile?.name || 'Instructor'}>
-            {userProfile?.name?.charAt(0).toUpperCase() || 'I'}
+    <div className="bg-background text-on-surface min-h-screen">
+      {/* TopAppBar */}
+      <header className="bg-surface dark:bg-on-background border-b border-outline-variant dark:border-outline fixed top-0 left-0 w-full z-40">
+        <div className="flex items-center justify-between px-margin-mobile md:px-margin-desktop h-16 w-full max-w-[1200px] mx-auto">
+          <div className="flex items-center gap-sm">
+            <span className="material-symbols-outlined text-primary dark:text-primary-fixed cursor-pointer">menu</span>
+            <h1 className="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed">Instructor Portal</h1>
           </div>
-          <button 
-            onClick={handleLogout} 
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#556078',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              padding: 4,
-              marginLeft: 4,
-              transition: 'color 0.2s'
-            }}
-            onMouseEnter={e => e.currentTarget.style.color = '#ff5252'}
-            onMouseLeave={e => e.currentTarget.style.color = '#556078'}
-            title="Log Out"
-          >
-            <LogOut size={20} />
-          </button>
+          <div className="flex items-center gap-sm">
+            <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-sm font-bold text-primary">
+              {userProfile?.name?.charAt(0)?.toUpperCase() || 'I'}
+            </div>
+            <button onClick={handleLogout} title="Log Out" className="p-1 text-on-surface-variant hover:text-error transition-colors">
+              <span className="material-symbols-outlined" style={{ fontSize: '22px' }}>logout</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="ins-main">
-        <div className="ins-page-enter">
-          <Outlet />
-        </div>
+      {/* Main Content Canvas */}
+      <main className="pt-20 pb-24 px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto min-h-screen">
+        <Outlet />
       </main>
 
-      {/* Bottom Nav */}
-      <nav className="ins-bottom-nav">
+      {/* BottomNavBar */}
+      <nav className="fixed bottom-0 left-0 w-full z-50 bg-surface-container-lowest dark:bg-on-background border-t border-outline-variant dark:border-outline flex justify-around items-center px-4 pb-2 pt-2 h-20">
         {menuItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.label}
-              to={item.path}
-              className={`ins-nav-item ${isActive ? 'active' : ''} ${item.isPlay ? 'has-session' : ''}`}
-            >
-              <div className="ins-nav-icon-wrap">
-                <item.icon />
-              </div>
-              <span className="ins-nav-label">{item.label}</span>
-            </Link>
-          );
+          const isActive = item.label === 'Dashboard'
+            ? location.pathname === '/instructor' || location.pathname.startsWith('/instructor/dashboard')
+            : location.pathname.startsWith(item.path);
+
+          // Map Lucide icons to Material Symbols for the new layout
+          let iconName = 'circle';
+          if (item.label === 'Dashboard') iconName = 'calendar_today';
+          if (item.label === 'Schedule') iconName = 'event';
+          if (item.label === 'Active') iconName = 'play_circle';
+          if (item.label === 'Students') iconName = 'groups';
+          if (item.label === 'Hours') iconName = 'schedule';
+
+          if (isActive) {
+            return (
+              <Link key={item.label} to={item.path} className="flex flex-col items-center justify-center bg-secondary-container dark:bg-secondary text-on-secondary-container dark:text-on-secondary rounded-full px-4 py-1 transition-transform scale-95 active:scale-90">
+                <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>{iconName}</span>
+                <span className="font-label-sm text-label-sm">{item.label}</span>
+              </Link>
+            );
+          } else {
+            return (
+              <Link key={item.label} to={item.path} className="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-tertiary-container p-2 hover:bg-surface-container-high dark:hover:bg-tertiary-container transition-all">
+                <span className="material-symbols-outlined">{iconName}</span>
+                <span className="font-label-sm text-label-sm">{item.label}</span>
+              </Link>
+            );
+          }
         })}
       </nav>
     </div>

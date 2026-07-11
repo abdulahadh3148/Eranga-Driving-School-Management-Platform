@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase/config';
-import { doc, getDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { CheckCircle2, Circle, Trophy, Award, Target, BookOpen, Car } from 'lucide-react';
 
 const steps = [
@@ -17,29 +17,37 @@ const steps = [
 
 export default function ProgressTracker() {
   const { currentUser, userProfile } = useAuth();
-  const [completedLessons, setCompletedLessons] = useState(0);
+  const [activePackage, setActivePackage] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!currentUser) return;
-    const fetchLessons = async () => {
+    const fetchPackage = async () => {
       try {
-        const q = query(collection(db, 'bookings'), where('studentId', '==', currentUser.uid), where('status', '==', 'completed'));
+        const q = query(
+          collection(db, 'student_packages'), 
+          where('student_id', '==', currentUser.uid), 
+          where('status', '==', 'active')
+        );
         const snap = await getDocs(q);
-        setCompletedLessons(snap.docs.length);
+        if (!snap.empty) {
+          setActivePackage(snap.docs[0].data());
+        }
       } catch (err) {
         console.error(err);
       } finally {
         setLoading(false);
       }
     };
-    fetchLessons();
+    fetchPackage();
   }, [currentUser]);
 
   const currentStepIdx = steps.findIndex(s => s.id === (userProfile?.currentStep || 'Medical Check'));
   const progress = userProfile?.progress || 0;
-  const classesTotal = userProfile?.classesTotal || 18;
-  const classesDone = userProfile?.classesCompleted || completedLessons; // Fallback to DB count
+  
+  // Use package data if available, fallback to profile defaults
+  const classesTotal = activePackage?.total_classes || userProfile?.classesTotal || 18;
+  const classesDone = activePackage?.completed_classes || userProfile?.classesCompleted || 0; 
 
   if (loading) return <div className="p-8 text-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div></div>;
 
@@ -115,9 +123,9 @@ export default function ProgressTracker() {
               <span className="text-sm font-medium text-gray-500 mb-1">/ {classesTotal} completed</span>
             </div>
             <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-500 rounded-full transition-all duration-1000" style={{ width: `${(classesDone / classesTotal) * 100}%` }} />
+              <div className="h-full bg-blue-500 rounded-full transition-all duration-1000" style={{ width: `${classesTotal > 0 ? (classesDone / classesTotal) * 100 : 0}%` }} />
             </div>
-            {classesDone >= classesTotal && (
+            {classesDone >= classesTotal && classesTotal > 0 && (
               <p className="mt-3 text-xs text-green-600 font-medium flex items-center gap-1"><CheckCircle2 size={14}/> Required hours completed.</p>
             )}
           </motion.div>

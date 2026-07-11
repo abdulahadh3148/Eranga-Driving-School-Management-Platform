@@ -1,10 +1,12 @@
 /* ===== Admin Dashboard Styles ===== */
 
 .admin-layout {
-  font-family: 'Hanken Grotesk', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-body);
   background-color: var(--bg-page);
   color: var(--text-main);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   min-height: 100vh;
 }
 
@@ -30,22 +32,22 @@
 }
 
 .admin-sidebar-brand h1 {
-  font-family: 'Hanken Grotesk', sans-serif;
-  font-size: 24px;
+  font-family: var(--font-heading);
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.3;
   color: var(--text-main);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.018em;
 }
 
 .admin-sidebar-brand p {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   margin-top: 0.25rem;
 }
 
@@ -64,11 +66,11 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.625rem 0.75rem;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 600;
   line-height: 1;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.005em;
   color: var(--text-muted);
   text-decoration: none;
   transition: all 0.2s ease;
@@ -126,10 +128,11 @@
 }
 
 .admin-header-title {
-  font-family: 'Hanken Grotesk', sans-serif;
-  font-size: 24px;
+  font-family: var(--font-heading);
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.3;
+  letter-spacing: -0.014em;
   color: var(--text-main);
 }
 
@@ -178,9 +181,10 @@
 }
 
 .admin-profile-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 600;
+  letter-spacing: -0.003em;
   color: var(--text-main);
   transition: opacity 0.2s ease;
 }
@@ -219,21 +223,22 @@
 }
 
 .admin-stat-label {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   margin-bottom: 0.5rem;
 }
 
 .admin-stat-value {
-  font-family: 'Hanken Grotesk', sans-serif;
-  font-size: 32px;
+  font-family: var(--font-heading);
+  font-size: 30px;
   font-weight: 700;
   line-height: 1.2;
+  letter-spacing: -0.02em;
   color: var(--text-main);
 }
 
@@ -242,10 +247,11 @@
   align-items: center;
   gap: 0.25rem;
   margin-top: 1rem;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 600;
   line-height: 1;
+  letter-spacing: 0.005em;
 }
 
 .admin-stat-trend.positive {
@@ -299,20 +305,21 @@
 }
 
 .admin-section-title {
-  font-family: 'Hanken Grotesk', sans-serif;
-  font-size: 24px;
+  font-family: var(--font-heading);
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.3;
+  letter-spacing: -0.014em;
   color: var(--text-main);
 }
 
 .admin-section-link {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--primary);
   text-decoration: none;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.005em;
   transition: opacity 0.2s ease;
 }
 
@@ -334,13 +341,13 @@
 
 .admin-table th {
   padding: 0.75rem 1.5rem;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
 }
 
 .admin-table th:last-child {
@@ -369,16 +376,18 @@
 }
 
 .admin-td-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 600;
+  letter-spacing: -0.003em;
   color: var(--text-main);
 }
 
 .admin-td-sub {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: 11.5px;
   font-weight: 500;
+  letter-spacing: 0.005em;
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -387,9 +396,10 @@
 .admin-badge {
   display: inline-block;
   padding: 0.25rem 0.5rem;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   border: 1px solid var(--border);
   background: var(--border);
   color: var(--text-main);
@@ -400,13 +410,13 @@
   padding: 0.375rem 1rem;
   background: var(--primary);
   color: var(--text-on-primary);
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 600;
   border: none;
   cursor: pointer;
   transition: all 0.2s ease;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.005em;
 }
 
 .admin-btn-primary:hover {
@@ -423,13 +433,13 @@
   padding: 0.375rem 1rem;
   background: transparent;
   color: var(--text-main);
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 600;
   border: 1px solid var(--border);
   cursor: pointer;
   transition: all 0.2s ease;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.005em;
 }
 
 .admin-btn-outline:hover {
@@ -527,23 +537,26 @@
 }
 
 .admin-package-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 700;
+  letter-spacing: -0.003em;
   color: var(--text-main);
 }
 
 .admin-package-price {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 600;
+  letter-spacing: -0.003em;
   color: var(--primary);
 }
 
 .admin-package-desc {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: 11.5px;
   font-weight: 500;
+  letter-spacing: 0.005em;
   color: var(--text-muted);
   margin-bottom: 0.75rem;
 }
@@ -582,9 +595,10 @@
 .admin-fleet-row {
   display: flex;
   justify-content: space-between;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 600;
+  letter-spacing: -0.003em;
   margin-bottom: 0.25rem;
 }
 
@@ -613,32 +627,36 @@
 }
 
 .admin-payment-name {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 600;
+  letter-spacing: -0.003em;
   color: var(--text-main);
 }
 
 .admin-payment-pkg {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: 11.5px;
   font-weight: 500;
+  letter-spacing: 0.005em;
   color: var(--text-muted);
   margin-top: 2px;
 }
 
 .admin-payment-amount {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
   font-weight: 700;
+  letter-spacing: -0.003em;
   color: var(--text-main);
   text-align: right;
 }
 
 .admin-payment-status {
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
   text-align: right;
   margin-top: 2px;
 }
@@ -662,9 +680,10 @@
   display: inline-block;
   padding: 0.125rem 0.5rem;
   background: var(--border);
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 /* FAB */
@@ -748,7 +767,8 @@
   }
 
   .admin-header-title {
-    font-size: 18px;
+    font-size: 17px;
+    letter-spacing: -0.01em;
   }
 }
 
@@ -869,11 +889,11 @@
 }
 
 .admin-form-label {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   color: var(--text-muted);
 }
 
@@ -882,8 +902,9 @@
   padding: 0.75rem 1rem;
   background: var(--border);
   border: 1px solid var(--border);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
+  letter-spacing: -0.009em;
   color: var(--text-main);
   outline: none;
   transition: border-color 0.2s ease;

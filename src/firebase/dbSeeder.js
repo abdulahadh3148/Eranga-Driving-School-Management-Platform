@@ -1,326 +1,230 @@
 import { db } from './config';
 import { doc, writeBatch, collection, getDocs, limit, query } from 'firebase/firestore';
 
+// ─── Counter seeds for ID generation ─────────────────────────────────────────
+const SEED_COUNTERS = {
+  'EDS': { lastId: 4 },
+  'INS': { lastId: 6 },
+  'VEH': { lastId: 8 },
+  'PKG': { lastId: 3 },
+  'SES': { lastId: 4 },
+  'PAY': { lastId: 2 },
+};
+
+// ─── Students ────────────────────────────────────────────────────────────────
+const SEED_STUDENTS = [
+  {
+    id: 'EDS001',
+    name: 'Abdul Rahman',
+    email: 'abdul@eranga.com',
+    role: 'student',
+    phone: '0771234567',
+    status: 'L_PERMIT_APPROVED',
+    progress: 40,
+    currentStep: 'IN_TRAINING',
+    outstandingFees: 0,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'EDS002',
+    name: 'Kasun Perera',
+    email: 'kasun@eranga.com',
+    role: 'student',
+    phone: '0777654321',
+    status: 'L_PERMIT_APPROVED',
+    progress: 20,
+    currentStep: 'IN_TRAINING',
+    outstandingFees: 15000,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'EDS003',
+    name: 'Samitha Jayaweera',
+    email: 'samitha@eranga.com',
+    role: 'student',
+    phone: '0774567890',
+    status: 'L_PERMIT_PENDING',
+    progress: 0,
+    currentStep: 'L_PERMIT_PENDING',
+    outstandingFees: 0,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'EDS004',
+    name: 'Nimali Fernando',
+    email: 'nimali@eranga.com',
+    role: 'student',
+    phone: '0779876543',
+    status: 'L_PERMIT_PENDING',
+    progress: 0,
+    currentStep: 'L_PERMIT_PENDING',
+    outstandingFees: 0,
+    createdAt: new Date().toISOString()
+  }
+];
+
+// ─── Instructors ─────────────────────────────────────────────────────────────
 const SEED_INSTRUCTORS = [
-  {
-    id: 'inst_kamal',
-    name: 'Kamal Perera',
-    email: 'kamal@eranga.com',
-    phone: '+94 77 123 4567',
-    vehiclePreference: 'Car (Manual & Auto)',
-    rating: 4.9,
-    lang: 'Sinhala, English',
-    studentsCount: 340,
-    role: 'instructor',
-    status: 'approved',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'inst_nimal',
-    name: 'Nimal Fernando',
-    email: 'nimal@eranga.com',
-    phone: '+94 77 234 5678',
-    vehiclePreference: 'Motorcycle',
-    rating: 4.8,
-    lang: 'Sinhala, Tamil',
-    studentsCount: 210,
-    role: 'instructor',
-    status: 'approved',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'inst_chaminda',
-    name: 'Chaminda Silva',
-    email: 'chaminda@eranga.com',
-    phone: '+94 77 345 6789',
-    vehiclePreference: 'Heavy Vehicle',
-    rating: 4.9,
-    lang: 'Sinhala',
-    studentsCount: 178,
-    role: 'instructor',
-    status: 'approved',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'inst_lakshmi',
-    name: 'Lakshmi Wickramasinghe',
-    email: 'lakshmi@eranga.com',
-    phone: '+94 77 456 7890',
-    vehiclePreference: 'Car & Defensive Driving',
-    rating: 4.7,
-    lang: 'Tamil, English',
-    studentsCount: 265,
-    role: 'instructor',
-    status: 'approved',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'inst_roshan',
-    name: 'Roshan Jayawardena',
-    email: 'roshan@eranga.com',
-    phone: '+94 77 567 8901',
-    vehiclePreference: 'Van & Bus',
-    rating: 4.8,
-    lang: 'Sinhala, English',
-    studentsCount: 195,
-    role: 'instructor',
-    status: 'approved',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'inst_dilani',
-    name: 'Dilani Kumari',
-    email: 'dilani@eranga.com',
-    phone: '+94 77 678 9012',
-    vehiclePreference: 'Car & Theory',
-    rating: 4.9,
-    lang: 'Sinhala, Tamil, English',
-    studentsCount: 230,
-    role: 'instructor',
-    status: 'approved',
-    createdAt: new Date().toISOString()
-  }
+  { id: 'INS001', name: 'Kamal Perera', email: 'kamal@eranga.com', phone: '+94 77 123 4567', vehicleId: 'VEH001', rating: 4.9, role: 'instructor', status: 'approved', createdAt: new Date().toISOString() },
+  { id: 'INS002', name: 'Nimal Fernando', email: 'nimal@eranga.com', phone: '+94 77 234 5678', vehicleId: 'VEH004', rating: 4.8, role: 'instructor', status: 'approved', createdAt: new Date().toISOString() },
+  { id: 'INS003', name: 'Chaminda Silva', email: 'chaminda@eranga.com', phone: '+94 77 345 6789', vehicleId: 'VEH008', rating: 4.9, role: 'instructor', status: 'approved', createdAt: new Date().toISOString() },
+  { id: 'INS004', name: 'Lakshmi Wick.', email: 'lakshmi@eranga.com', phone: '+94 77 456 7890', vehicleId: 'VEH002', rating: 4.7, role: 'instructor', status: 'approved', createdAt: new Date().toISOString() },
+  { id: 'INS005', name: 'Roshan Jaya.', email: 'roshan@eranga.com', phone: '+94 77 567 8901', vehicleId: 'VEH007', rating: 4.8, role: 'instructor', status: 'approved', createdAt: new Date().toISOString() },
+  { id: 'INS006', name: 'Dilani Kumari', email: 'dilani@eranga.com', phone: '+94 77 678 9012', vehicleId: 'VEH003', rating: 4.9, role: 'instructor', status: 'approved', createdAt: new Date().toISOString() }
 ];
 
+// ─── Vehicles ────────────────────────────────────────────────────────────────
 const SEED_VEHICLES = [
+  { id: 'VEH001', name: 'Toyota Aqua', type: 'Car', licensePlate: 'WP-CAD-5291', status: 'Available' },
+  { id: 'VEH002', name: 'Honda Civic', type: 'Car', licensePlate: 'WP-CBA-9921', status: 'Available' },
+  { id: 'VEH003', name: 'Toyota Prius', type: 'Car', licensePlate: 'WP-CAR-7890', status: 'In Use' },
+  { id: 'VEH004', name: 'Honda CB Hornet', type: 'Motorcycle', licensePlate: 'CP-BFN-2345', status: 'Available' },
+  { id: 'VEH005', name: 'Bajaj Pulsar', type: 'Motorcycle', licensePlate: 'CP-BFP-6789', status: 'Available' },
+  { id: 'VEH006', name: 'Bajaj RE', type: 'Three-Wheeler', licensePlate: 'NW-QE-4567', status: 'Available' },
+  { id: 'VEH007', name: 'Toyota HiAce', type: 'Van', licensePlate: 'NW-PE-8901', status: 'Available' },
+  { id: 'VEH008', name: 'Mitsubishi Canter', type: 'Lorry', licensePlate: 'WP-LH-2345', status: 'Maintenance' }
+];
+
+// ─── Packages ────────────────────────────────────────────────────────────────
+// Packages are now loaded from src/data/packages.js - not seeded to Firestore for display
+
+// ─── Sessions (unified — replaces old bookings) ─────────────────────────────
+// Uses camelCase fields to match what Admin Scheduling writes
+const today = new Date().toISOString().split('T')[0];
+
+const SEED_SESSIONS = [
   {
-    id: 'veh_aqua',
-    name: 'Toyota Aqua',
-    type: 'Car',
-    category: 'Cars',
-    features: ['AC', 'Dual Control', 'Auto'],
-    status: 'Available',
-    emoji: '🚗',
-    numberPlate: 'WP-CAD-5291'
+    id: 'SES001',
+    studentId: 'EDS001',
+    studentName: 'Abdul Rahman',
+    instructorId: 'INS001',
+    instructorName: 'Kamal Perera',
+    date: today,
+    time: '09:00',
+    timeSlotId: 'S2',
+    vehicleType: 'Car',
+    vehicleId: 'VEH001',
+    status: 'scheduled',
+    attendance: null,
+    progress: 'not_started',
+    notes: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   },
   {
-    id: 'veh_civic',
-    name: 'Honda Civic',
-    type: 'Car',
-    category: 'Cars',
-    features: ['AC', 'Dual Control', 'Manual'],
-    status: 'Available',
-    emoji: '🚙',
-    numberPlate: 'WP-CBA-9921'
+    id: 'SES002',
+    studentId: 'EDS002',
+    studentName: 'Kasun Perera',
+    instructorId: 'INS001',
+    instructorName: 'Kamal Perera',
+    date: today,
+    time: '09:00',
+    timeSlotId: 'S2',
+    vehicleType: 'Car',
+    vehicleId: 'VEH001',
+    status: 'scheduled',
+    attendance: null,
+    progress: 'not_started',
+    notes: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   },
   {
-    id: 'veh_prius',
-    name: 'Toyota Prius',
-    type: 'Car',
-    category: 'Cars',
-    features: ['AC', 'Dual Control', 'Hybrid'],
-    status: 'In Use',
-    emoji: '🚘',
-    numberPlate: 'WP-CAR-7890'
+    id: 'SES003',
+    studentId: 'EDS001',
+    studentName: 'Abdul Rahman',
+    instructorId: 'INS002',
+    instructorName: 'Nimal Fernando',
+    date: today,
+    time: '14:00',
+    timeSlotId: 'S6',
+    vehicleType: 'Motorcycle',
+    vehicleId: 'VEH004',
+    status: 'scheduled',
+    attendance: null,
+    progress: 'not_started',
+    notes: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   },
   {
-    id: 'veh_hornet',
-    name: 'Honda CB Hornet',
-    type: 'Motorcycle',
-    category: 'Motorcycles',
-    features: ['150cc', 'Disc Brake', 'Training Wheels'],
-    status: 'Available',
-    emoji: '🏍️',
-    numberPlate: 'CP-BFN-2345'
-  },
-  {
-    id: 'veh_pulsar',
-    name: 'Bajaj Pulsar',
-    type: 'Motorcycle',
-    category: 'Motorcycles',
-    features: ['135cc', 'Easy Start', 'Beginner Friendly'],
-    status: 'Available',
-    emoji: '🏍️',
-    numberPlate: 'CP-BFP-6789'
-  },
-  {
-    id: 'veh_re',
-    name: 'Bajaj RE',
-    type: 'Three-Wheeler',
-    category: 'Three-Wheelers',
-    features: ['Dual Control', 'Easy Handling'],
-    status: 'Available',
-    emoji: '🛺',
-    numberPlate: 'NW-QE-4567'
-  },
-  {
-    id: 'veh_hiace',
-    name: 'Toyota HiAce',
-    type: 'Van',
-    category: 'Heavy',
-    features: ['15 Seat', 'AC', 'Dual Control'],
-    status: 'Available',
-    emoji: '🚐',
-    numberPlate: 'NW-PE-8901'
-  },
-  {
-    id: 'veh_canter',
-    name: 'Mitsubishi Canter',
-    type: 'Lorry',
-    category: 'Heavy',
-    features: ['3-Ton', 'Manual', 'Training Rig'],
-    status: 'Maintenance',
-    emoji: '🚛',
-    numberPlate: 'WP-LH-2345'
+    id: 'SES004',
+    studentId: 'EDS002',
+    studentName: 'Kasun Perera',
+    instructorId: 'INS002',
+    instructorName: 'Nimal Fernando',
+    date: today,
+    time: '14:00',
+    timeSlotId: 'S6',
+    vehicleType: 'Motorcycle',
+    vehicleId: 'VEH004',
+    status: 'completed',
+    attendance: 'present',
+    progress: 'completed',
+    notes: 'Good clutch control, ready for next level.',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   }
 ];
 
-const SEED_TESTIMONIALS = [
-  {
-    id: 'test_samantha',
-    name: 'Samantha Perera',
-    course: 'Car (Class B)',
-    date: 'March 2025',
-    rating: 5,
-    text: 'Eranga Driving School was amazing! My instructor Kamal sir was patient and explained everything clearly. I passed on my first attempt! Highly recommend to anyone in Kurunegala.',
-    image: '/images/student_female_avatar.png',
-    location: 'Kurunegala, Sri Lanka'
-  },
-  {
-    id: 'test_pradeep',
-    name: 'Pradeep Kumar',
-    course: 'Motorcycle (Class A)',
-    date: 'January 2025',
-    rating: 5,
-    text: 'The motorcycle training was thorough and safe. Nimal sir taught me balance and road awareness step by step. The dual-control setup gave me so much confidence.',
-    image: '/images/student_male_avatar.png',
-    location: 'Peradeniya, Sri Lanka'
-  },
-  {
-    id: 'test_rizana',
-    name: 'Fathima Rizana',
-    course: 'Car (Standard Package)',
-    date: 'April 2025',
-    rating: 5,
-    text: 'I was nervous about driving but the instructors here made me feel very comfortable. The theory classes were excellent and the dashboard system for tracking my progress was very helpful.',
-    image: '/images/student_female_avatar.png',
-    location: 'Kurunegala, Sri Lanka'
-  },
-  {
-    id: 'test_lahiru',
-    name: 'Lahiru Bandara',
-    course: 'Heavy Vehicle (Class CE)',
-    date: 'February 2025',
-    rating: 4,
-    text: 'Professional training for my lorry licence. Chaminda sir knows the routes inside out. Good fleet and very organized scheduling system. Will recommend to my colleagues.',
-    image: '/images/student_male_avatar.png',
-    location: 'Kurunegala, Sri Lanka'
-  },
-  {
-    id: 'test_ayesha',
-    name: 'Ayesha Perera',
-    course: 'Car (Premium Package)',
-    date: 'May 2025',
-    rating: 5,
-    text: 'The premium package was worth every rupee. Highway driving, night sessions, defensive driving — all covered perfectly. I feel so confident on the road now.',
-    image: '/images/student_female_avatar.png',
-    location: 'Kurunegala, Sri Lanka'
-  },
-  {
-    id: 'test_kasun',
-    name: 'Kasun Rajapaksha',
-    course: 'Three-Wheeler (Class B1)',
-    date: 'December 2024',
-    rating: 5,
-    text: 'Quick and efficient. Got my three-wheeler licence in just two weeks. The instructors are punctual and the vehicles are well-maintained. Great experience overall!',
-    image: '/images/student_male_avatar.png',
-    location: 'Kurunegala, Sri Lanka'
-  }
+// ─── Payments ────────────────────────────────────────────────────────────────
+const SEED_PAYMENTS = [
+  { id: 'PAY001', studentId: 'EDS001', sessionId: 'SES001', packageId: 'PKG002', amount: 25000, paymentDate: new Date().toISOString(), method: 'cash', status: 'paid', invoiceNumber: 'INV-10001', receivedBy: 'ADM001', description: 'Full package payment' },
+  { id: 'PAY002', studentId: 'EDS002', sessionId: 'SES002', packageId: 'PKG001', amount: 5000, paymentDate: new Date().toISOString(), method: 'online', status: 'pending', invoiceNumber: 'INV-10002', receivedBy: 'ADM001', description: 'First installment' }
 ];
 
-const SEED_PACKAGES = [
-  {
-    id: 'pkg_basic',
-    name: 'Basic Starter',
-    price: 15000,
-    duration: '4 Weeks',
-    vehicleType: 'Car (Manual)',
-    isActive: true,
-    popular: false,
-    features: ['10 Theory Classes', '10 Practical Lessons (1hr each)', 'Written Exam Preparation']
-  },
-  {
-    id: 'pkg_standard',
-    name: 'Pro Driver',
-    price: 25000,
-    duration: '6 Weeks',
-    vehicleType: 'Car (Manual/Auto)',
-    isActive: true,
-    popular: true,
-    features: ['15 Theory Classes', '18 Practical Lessons (1hr each)', 'Written Exam Preparation', 'Vehicle for Test Day', 'Highway Driving', 'Free Repeat Lessons (2)']
-  },
-  {
-    id: 'pkg_premium',
-    name: 'Ultimate License',
-    price: 40000,
-    duration: '8 Weeks',
-    vehicleType: 'Car + Motorway',
-    isActive: true,
-    popular: false,
-    features: ['20 Theory Classes', '25 Practical Lessons (1hr each)', 'Written Exam Preparation', 'Vehicle for Test Day', 'Highway Driving', 'Night Driving Session', 'Defensive Driving Module', 'Unlimited Repeat Lessons']
-  }
-];
-
+// ─── Seeder Function ─────────────────────────────────────────────────────────
 export async function seedDatabaseIfNeeded() {
   try {
     const batch = writeBatch(db);
     let needsCommit = false;
 
-    // 1. Seed Instructors if no instructors exist
-    const instQuery = query(collection(db, 'users'), limit(1));
-    const instSnap = await getDocs(instQuery);
-    // Since users could be empty, let's check if there's any user doc at all. If empty, seed instructors.
-    // To be safer, we check if there is at least one instructor.
-    const instCheck = await getDocs(query(collection(db, 'users'), limit(1)));
-    if (instCheck.empty) {
-      console.log('Seeding default instructors...');
-      SEED_INSTRUCTORS.forEach((inst) => {
-        const { id, ...data } = inst;
+    // Check if counters exist — if not, it's a fresh database
+    const counterCheck = await getDocs(query(collection(db, 'counters'), limit(1)));
+    if (counterCheck.empty) {
+      console.log('🌱 Seeding database with unified schema (camelCase, sessions collection)...');
+
+      // 1. Counters
+      Object.entries(SEED_COUNTERS).forEach(([prefix, data]) => {
+        batch.set(doc(db, 'counters', prefix), data);
+      });
+
+      // 2. Users (Students + Instructors)
+      [...SEED_STUDENTS, ...SEED_INSTRUCTORS].forEach((user) => {
+        const { id, ...data } = user;
         batch.set(doc(db, 'users', id), data);
       });
-      needsCommit = true;
-    }
 
-    // 2. Seed Vehicles
-    const vehCheck = await getDocs(query(collection(db, 'vehicles'), limit(1)));
-    if (vehCheck.empty) {
-      console.log('Seeding default vehicles...');
+      // 3. Vehicles
       SEED_VEHICLES.forEach((veh) => {
         const { id, ...data } = veh;
         batch.set(doc(db, 'vehicles', id), data);
       });
-      needsCommit = true;
-    }
 
-    // 3. Seed Testimonials
-    const testCheck = await getDocs(query(collection(db, 'testimonials'), limit(1)));
-    if (testCheck.empty) {
-      console.log('Seeding default testimonials...');
-      SEED_TESTIMONIALS.forEach((t) => {
-        const { id, ...data } = t;
-        batch.set(doc(db, 'testimonials', id), data);
-      });
-      needsCommit = true;
-    }
+      // 4. Packages (Skipped - now driven by local data in src/data/packages.js)
 
-    // 4. Seed Packages
-    const pkgCheck = await getDocs(query(collection(db, 'packages'), limit(1)));
-    if (pkgCheck.empty) {
-      console.log('Seeding default packages...');
-      SEED_PACKAGES.forEach((pkg) => {
-        const { id, ...data } = pkg;
-        batch.set(doc(db, 'packages', id), data);
+      // 5. Sessions (unified — no more separate bookings collection)
+      SEED_SESSIONS.forEach((ses) => {
+        const { id, ...data } = ses;
+        batch.set(doc(db, 'sessions', id), data);
       });
+
+      // 6. Payments
+      SEED_PAYMENTS.forEach((pay) => {
+        const { id, ...data } = pay;
+        batch.set(doc(db, 'payments', id), data);
+      });
+
       needsCommit = true;
     }
 
     if (needsCommit) {
       await batch.commit();
-      console.log('Database successfully seeded with default data!');
+      console.log('✅ Database seeded successfully with unified schema!');
     } else {
-      console.log('Database already has data. Seeding skipped.');
+      console.log('ℹ️ Database already has data. Seeding skipped.');
     }
   } catch (error) {
-    console.error('Error seeding database:', error);
+    console.error('❌ Error seeding database:', error);
   }
 }

@@ -1,0 +1,211 @@
+/* ─── Instructor Schedule Simple Styles ───────────────────────────────── */
+
+.schedule-page-wrapper {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 1rem 0 3rem 0;
+  font-family: var(--font-body);
+}
+
+.schedule-page-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #111827;
+  margin-bottom: 1rem;
+}
+
+/* ─── Date Selector ──────────────────────────────────────────────────────── */
+.date-selector-container {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.date-btn {
+  flex: 1;
+  padding: 0.75rem 0.5rem;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #4b5563;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.date-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.date-picker-wrapper {
+  position: relative;
+  flex: 1;
+}
+
+.date-picker-input {
+  width: 100%;
+  height: 100%;
+  padding: 0.75rem 0.5rem;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #4b5563;
+  cursor: pointer;
+  outline: none;
+  /* Hide default native date picker text if possible, we want it to look like a button */
+}
+
+.date-picker-input.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+/* ─── Schedule Cards ─────────────────────────────────────────────────────── */
+.schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.schedule-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 1rem;
+  padding: 1rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Card Header (Time & Badge) */
+.schedule-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.schedule-time {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #111827;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.schedule-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.badge-upcoming { background: #fef9c3; color: #a16207; }
+.badge-completed { background: #dcfce7; color: #166534; }
+.badge-missed { background: #fee2e2; color: #991b1b; }
+
+/* Card Body (Student Info) */
+.schedule-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.schedule-student {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.schedule-details {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.schedule-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* ─── Action Buttons ─────────────────────────────────────────────────────── */
+.schedule-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 0.875rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: transform 0.1s ease;
+}
+
+.action-btn:active {
+  transform: scale(0.96);
+}
+
+.btn-start {
+  background: var(--primary);
+  color: white;
+}
+
+.btn-complete {
+  background: #16a34a;
+  color: white;
+}
+
+.btn-missed {
+  background: #dc2626;
+  color: white;
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ─── Empty & Loading States ─────────────────────────────────────────────── */
+.schedule-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 1rem;
+  border: 2px dashed #e5e7eb;
+  font-weight: 600;
+}
+
+.schedule-loading {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+  font-weight: 600;
+}

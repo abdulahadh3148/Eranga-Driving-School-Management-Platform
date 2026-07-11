@@ -1,7 +1,9 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { generateCustomId } from '../utils/idGenerator';
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
@@ -17,6 +19,7 @@ export const AuthProvider = ({ children }) => {
     if (mockUserStr) {
       try {
         const mockUserObj = JSON.parse(mockUserStr);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCurrentUser({
           uid: mockUserObj.uid || 'mock-uid',
           email: mockUserObj.email,
@@ -39,13 +42,32 @@ export const AuthProvider = ({ children }) => {
       if (user) {
         setCurrentUser(user);
         try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const docSnap = await getDoc(userDocRef);
-          if (docSnap.exists()) {
-            setUserProfile(docSnap.data());
+          const q = query(collection(db, 'users'), where('authUid', '==', user.uid));
+          const querySnap = await getDocs(q);
+          
+          if (!querySnap.empty) {
+            const docSnap = querySnap.docs[0];
+            const data = docSnap.data();
+            const fallbackRole = data.role || data.type || 'student';
+            
+            // The users collection is now the single source of truth for all roles.
+            // No legacy merging from 'instructors' or 'students' is needed.
+
+            // TEMP: Console debug for user and session safety validation
+            console.log('User Profile Fetched:', data);
+
+            if (!data.role) {
+              await setDoc(doc(db, 'users', docSnap.id), { role: fallbackRole }, { merge: true });
+            }
+
+            setUserProfile({ id: docSnap.id, ...data, role: fallbackRole });
           } else {
+            // Fallback for new unlinked seed accounts (like Alex)
             const isAlex = user.email === 'alex@example.com';
+            const newCustomId = await generateCustomId('EDS');
             const defaultProfile = {
+              id: newCustomId,
+              authUid: user.uid,
               name: isAlex ? 'Alex' : (user.displayName || 'New Student'),
               email: user.email,
               role: 'student',
@@ -54,11 +76,11 @@ export const AuthProvider = ({ children }) => {
               classesCompleted: isAlex ? 12 : 0,
               classesTotal: 18,
               lessonsScheduled: isAlex ? 4 : 0,
-              outstandingFees: isAlex ? 4500 : 15000,
+              outstandingFees: isAlex ? 4500 : 0,
               currentStep: isAlex ? 'Theory Exam' : 'Medical Check',
               createdAt: new Date().toISOString()
             };
-            if (isAlex) await setDoc(userDocRef, defaultProfile);
+            if (isAlex) await setDoc(doc(db, 'users', newCustomId), defaultProfile);
             setUserProfile(defaultProfile);
           }
         } catch (error) {
@@ -84,9 +106,16 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('mockUser', JSON.stringify(profile));
   };
 
-  const logout = () => {
+  const logout = async () => {
     localStorage.removeItem('mockUser');
-    return signOut(auth);
+    localStorage.removeItem('token');
+    setCurrentUser(null);
+    setUserProfile(null);
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   const value = { currentUser, userProfile, setUserProfile, loading, logout, loginMockUser };

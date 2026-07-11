@@ -1,15 +1,36 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../../firebase/config';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDocs, where } from 'firebase/firestore';
-import { Calendar, CheckCircle, XCircle } from 'lucide-react';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDocs, where, setDoc } from 'firebase/firestore';
+import { Calendar, Car, Clock, Plus, X, Search, UserPlus, Users, AlertCircle } from 'lucide-react';
+import { generateCustomId } from '../../utils/idGenerator';
+import { TIME_SLOTS, VEHICLE_TYPES } from '../../utils/schedulingEngine';
 
 export default function AdminBookings() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [instructors, setInstructors] = useState([]);
+  const [allStudents, setAllStudents] = useState([]);
+
+  // Walk-in Modal
+  const [showWalkIn, setShowWalkIn] = useState(false);
+  const [walkinSubmitting, setWalkinSubmitting] = useState(false);
+  const [walkinError, setWalkinError] = useState('');
+  const [studentMode, setStudentMode] = useState('existing'); // 'existing' | 'new'
+  const [studentSearch, setStudentSearch] = useState('');
+  const [walkinForm, setWalkinForm] = useState({
+    studentId: '',
+    studentName: '',
+    newStudentName: '',
+    newStudentPhone: '',
+    vehicleType: '',
+    date: new Date().toISOString().split('T')[0],
+    timeSlotId: '',
+    instructorId: '',
+  });
 
   useEffect(() => {
+    // Fetch instructors
     const fetchInstructors = async () => {
       try {
         const q = query(collection(db, 'users'), where('role', '==', 'instructor'));
@@ -19,7 +40,20 @@ export default function AdminBookings() {
         console.error('Error fetching instructors:', err);
       }
     };
+
+    // Fetch students
+    const fetchStudents = async () => {
+      try {
+        const q = query(collection(db, 'users'), where('role', '==', 'student'));
+        const snap = await getDocs(q);
+        setAllStudents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error('Error fetching students:', err);
+      }
+    };
+
     fetchInstructors();
+    fetchStudents();
 
     const q = query(collection(db, 'bookings'), orderBy('date', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
@@ -37,36 +71,190 @@ export default function AdminBookings() {
     }
   };
 
-  const handleAssignInstructor = async (bookingId, instructorId) => {
+  const handleAssignInstructor = async (booking, instructorId) => {
     try {
       const selectedInst = instructors.find(i => i.id === instructorId);
       const instructorName = selectedInst ? selectedInst.name : 'Any';
-      await updateDoc(doc(db, 'bookings', bookingId), {
+      
+      await updateDoc(doc(db, 'bookings', booking.id), {
         instructorId,
-        instructorName
+        instructorName,
+        status: instructorId !== 'Any' ? 'assigned' : 'pending'
       });
+
+      if (instructorId !== 'Any') {
+        const scheduleId = `SCH-${booking.id}`;
+        await setDoc(doc(db, 'schedules', scheduleId), {
+          bookingId: booking.id,
+          instructorId: instructorId,
+          instructorName: instructorName,
+          studentId: booking.studentId,
+          studentName: booking.studentName || 'Unknown',
+          date: booking.date,
+          time: booking.timeSlot,
+          vehicle: booking.vehicle || 'Any',
+          status: 'scheduled',
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+      }
     } catch (err) {
       console.error('Error assigning instructor:', err);
     }
   };
 
   const getStatusColor = (status) => {
-    switch(status) {
+    switch(status?.toLowerCase()) {
       case 'confirmed': return 'bg-green-100 text-green-700';
+      case 'assigned': return 'bg-blue-100 text-blue-700';
+      case 'scheduled': return 'bg-purple-100 text-purple-700';
       case 'pending': return 'bg-yellow-100 text-yellow-700';
       case 'cancelled': return 'bg-red-100 text-red-700';
       case 'completed': return 'bg-gray-100 text-gray-700';
+      case 'ongoing': return 'bg-orange-100 text-orange-700';
+      case 'absent': return 'bg-red-50 text-red-900';
       default: return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const isInstructorAvailable = (instId, booking) => {
+    const conflict = bookings.find(b => 
+      b.id !== booking.id && 
+      b.instructorId === instId && 
+      b.date === booking.date && 
+      b.timeSlot === booking.timeSlot && 
+      b.status !== 'cancelled'
+    );
+    return !conflict;
+  };
+
+  // ─── Walk-in: All instructors available (no strict filtering) ───
+  const walkinAvailableInstructors = useMemo(() => {
+    return instructors;
+  }, [instructors]);
+
+  // ─── Walk-in: Filtered student list ───
+  const filteredStudents = useMemo(() => {
+    if (!studentSearch.trim()) return allStudents;
+    const q = studentSearch.toLowerCase();
+    return allStudents.filter(s =>
+      (s.name && s.name.toLowerCase().includes(q)) ||
+      (s.phone && s.phone.includes(q)) ||
+      s.id.toLowerCase().includes(q)
+    );
+  }, [allStudents, studentSearch]);
+
+  // ─── Walk-in: Open Modal ───
+  const openWalkInModal = () => {
+    setWalkinForm({
+      studentId: '', studentName: '', newStudentName: '', newStudentPhone: '',
+      vehicleType: '', date: new Date().toISOString().split('T')[0],
+      timeSlotId: '', instructorId: '',
+    });
+    setStudentMode('existing');
+    setStudentSearch('');
+    setWalkinError('');
+    setShowWalkIn(true);
+  };
+
+  // ─── Walk-in: Submit ───
+  const handleWalkinSubmit = async () => {
+    setWalkinError('');
+
+    // Validate
+    let studentId = walkinForm.studentId;
+    let studentName = walkinForm.studentName;
+
+    if (studentMode === 'new') {
+      if (!walkinForm.newStudentName.trim()) { setWalkinError('Student name is required.'); return; }
+      if (!walkinForm.newStudentPhone.trim()) { setWalkinError('Phone number is required.'); return; }
+    } else {
+      if (!studentId) { setWalkinError('Please select a student.'); return; }
+    }
+    if (!walkinForm.vehicleType) { setWalkinError('Vehicle type is required.'); return; }
+    if (!walkinForm.date) { setWalkinError('Date is required.'); return; }
+    if (!walkinForm.timeSlotId) { setWalkinError('Time slot is required.'); return; }
+    if (!walkinForm.instructorId) { setWalkinError('Instructor is required.'); return; }
+
+    setWalkinSubmitting(true);
+    try {
+      // If creating a new student, save them first
+      if (studentMode === 'new') {
+        const newStudentId = await generateCustomId('STU');
+        await setDoc(doc(db, 'users', newStudentId), {
+          id: newStudentId,
+          name: walkinForm.newStudentName.trim(),
+          phone: walkinForm.newStudentPhone.trim(),
+          role: 'student',
+          status: 'approved',
+          progressLevel: 'Beginner',
+          progress: 0,
+          createdAt: new Date().toISOString(),
+          source: 'walk-in',
+        });
+        studentId = newStudentId;
+        studentName = walkinForm.newStudentName.trim();
+      }
+
+      // Create the booking
+      const bookingId = await generateCustomId('BKG');
+      const selectedSlot = TIME_SLOTS.find(ts => ts.id === walkinForm.timeSlotId);
+      const instructor = instructors.find(i => i.id === walkinForm.instructorId);
+
+      await setDoc(doc(db, 'bookings', bookingId), {
+        id: bookingId,
+        studentId: studentId,
+        studentName: studentName,
+        instructorId: walkinForm.instructorId,
+        instructorName: instructor?.name || '',
+        date: walkinForm.date,
+        timeSlot: selectedSlot?.label || walkinForm.timeSlotId,
+        vehicle: walkinForm.vehicleType,
+        status: 'assigned',
+        bookingType: 'walk-in',
+        createdAt: new Date().toISOString(),
+      });
+
+      // Create schedule entry
+      const scheduleId = `SCH-${bookingId}`;
+      await setDoc(doc(db, 'schedules', scheduleId), {
+        bookingId: bookingId,
+        instructorId: walkinForm.instructorId,
+        instructorName: instructor?.name || '',
+        studentId: studentId,
+        studentName: studentName,
+        date: walkinForm.date,
+        time: selectedSlot?.label || walkinForm.timeSlotId,
+        vehicle: walkinForm.vehicleType,
+        status: 'scheduled',
+        createdAt: new Date().toISOString(),
+      });
+
+      setShowWalkIn(false);
+    } catch (err) {
+      console.error('Error creating walk-in booking:', err);
+      setWalkinError('Failed to create walk-in booking. ' + err.message);
+    } finally {
+      setWalkinSubmitting(false);
     }
   };
 
   return (
     <div className="space-y-6">
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-gray-900">All Bookings</h1>
-        <p className="text-gray-500 text-sm mt-1">Manage practical session schedules.</p>
+      {/* ─── Header ─── */}
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-between items-center flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">All Bookings</h1>
+          <p className="text-gray-500 text-sm mt-1">Manage practical session schedules and assign instructors.</p>
+        </div>
+        <button
+          onClick={openWalkInModal}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary/90 text-white font-semibold hover:bg-primary transition-colors shadow-sm"
+        >
+          <Plus size={18} /> Add Walk-in
+        </button>
       </motion.div>
 
+      {/* ─── Bookings Table ─── */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
         className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
@@ -78,6 +266,8 @@ export default function AdminBookings() {
                 <tr>
                   <th className="px-6 py-4">Date & Time</th>
                   <th className="px-6 py-4">Student</th>
+                  <th className="px-6 py-4">Type</th>
+                  <th className="px-6 py-4">Vehicle</th>
                   <th className="px-6 py-4">Instructor</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4 text-right">Actions</th>
@@ -88,14 +278,29 @@ export default function AdminBookings() {
                   <tr key={b.id} className="hover:bg-gray-50/50">
                     <td className="px-6 py-4">
                       <div className="font-bold text-gray-900 flex items-center gap-2"><Calendar size={16} className="text-primary"/>{b.date}</div>
-                      <div className="text-xs text-gray-500 ml-6">{b.timeSlot}</div>
+                      <div className="text-xs text-gray-500 ml-6 flex items-center gap-1"><Clock size={12}/> {b.timeSlot}</div>
                     </td>
                     <td className="px-6 py-4 font-medium text-gray-900">{b.studentName || 'Unknown'}</td>
                     <td className="px-6 py-4">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        b.bookingType === 'walk-in'
+                          ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                          : 'bg-sky-100 text-sky-800 border border-sky-200'
+                      }`}>
+                        {b.bookingType === 'walk-in' ? 'Walk-in' : 'Booked'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5 text-gray-700">
+                        <Car size={16} className="text-gray-400"/>
+                        {b.vehicle || 'Any Vehicle'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
                       <select
                         value={b.instructorId || 'Any'}
-                        onChange={(e) => handleAssignInstructor(b.id, e.target.value)}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-surface text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-orange-500/20"
+                        onChange={(e) => handleAssignInstructor(b, e.target.value)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-surface text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-orange-500/20 max-w-[150px]"
                       >
                         <option value="Any">Not Assigned (Any)</option>
                         {instructors.map(inst => (
@@ -107,31 +312,236 @@ export default function AdminBookings() {
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-lg text-xs font-bold capitalize ${getStatusColor(b.status)}`}>
-                        {b.status}
+                        {b.status || 'pending'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right flex justify-end gap-2">
-                      {b.status === 'pending' && (
-                        <>
-                          <button onClick={() => handleStatusUpdate(b.id, 'confirmed')} className="flex items-center gap-1 px-2 py-1 rounded bg-green-50 text-green-700 hover:bg-green-100">
-                            <CheckCircle size={14}/> Confirm
-                          </button>
-                          <button onClick={() => handleStatusUpdate(b.id, 'cancelled')} className="flex items-center gap-1 px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100">
-                            <XCircle size={14}/> Cancel
-                          </button>
-                        </>
-                      )}
+                      <select 
+                        className="px-2 py-1 text-xs border rounded bg-gray-50 hover:bg-gray-100 cursor-pointer text-gray-700 focus:outline-none"
+                        value="" 
+                        onChange={(e) => { if(e.target.value) handleStatusUpdate(b.id, e.target.value) }}
+                      >
+                        <option value="">Update Status...</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="assigned">Assigned</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
                     </td>
                   </tr>
                 ))}
                 {bookings.length === 0 && (
-                  <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">No bookings found.</td></tr>
+                  <tr><td colSpan="7" className="px-6 py-8 text-center text-gray-500">No bookings found.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
       </motion.div>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          WALK-IN MODAL
+         ═══════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {showWalkIn && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowWalkIn(false)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Add Walk-in Student</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">Create a session for a student without a prior booking.</p>
+                </div>
+                <button onClick={() => setShowWalkIn(false)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* ─── Section 1: Student ─── */}
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
+                    <Users size={13}/> Student
+                  </div>
+                  {/* Toggle: Existing vs New */}
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      onClick={() => setStudentMode('existing')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg border transition ${studentMode === 'existing' ? 'bg-primary text-white border-primary' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                    >
+                      <Search size={13} className="inline mr-1"/> Existing Student
+                    </button>
+                    <button
+                      onClick={() => setStudentMode('new')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg border transition ${studentMode === 'new' ? 'bg-primary text-white border-primary' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                    >
+                      <UserPlus size={13} className="inline mr-1"/> New Student
+                    </button>
+                  </div>
+
+                  {studentMode === 'existing' ? (
+                    <div>
+                      <div className="relative mb-2">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                        <input
+                          type="text"
+                          placeholder="Search by name, phone, or ID..."
+                          className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                          value={studentSearch}
+                          onChange={e => setStudentSearch(e.target.value)}
+                        />
+                      </div>
+                      <div className="max-h-36 overflow-y-auto border border-gray-100 rounded-lg">
+                        {filteredStudents.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-gray-400">No students found.</div>
+                        ) : (
+                          filteredStudents.map(s => (
+                            <div
+                              key={s.id}
+                              onClick={() => setWalkinForm(p => ({ ...p, studentId: s.id, studentName: s.name || 'Unknown' }))}
+                              className={`flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition text-sm ${walkinForm.studentId === s.id ? 'bg-primary/5 border-l-2 border-primary' : ''}`}
+                            >
+                              <div>
+                                <div className="font-semibold text-gray-800">{s.name || 'Unknown'}</div>
+                                <div className="text-[11px] text-gray-400">{s.phone || s.email || s.id}</div>
+                              </div>
+                              {walkinForm.studentId === s.id && <span className="text-primary text-xs font-bold">Selected ✓</span>}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1">Full Name *</label>
+                        <input
+                          type="text" placeholder="e.g. Ahmed Khan"
+                          className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                          value={walkinForm.newStudentName}
+                          onChange={e => setWalkinForm(p => ({ ...p, newStudentName: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1">Phone Number *</label>
+                        <input
+                          type="tel" placeholder="e.g. 03001234567"
+                          className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                          value={walkinForm.newStudentPhone}
+                          onChange={e => setWalkinForm(p => ({ ...p, newStudentPhone: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ─── Section 2: Session Details ─── */}
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
+                    <Calendar size={13}/> Session Details
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Date *</label>
+                      <input
+                        type="date"
+                        className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                        value={walkinForm.date}
+                        onChange={e => setWalkinForm(p => ({ ...p, date: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Time Slot *</label>
+                      <select
+                        className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                        value={walkinForm.timeSlotId}
+                        onChange={e => setWalkinForm(p => ({ ...p, timeSlotId: e.target.value, instructorId: '' }))}
+                      >
+                        <option value="">Select time</option>
+                        {TIME_SLOTS.map(ts => (
+                          <option key={ts.id} value={ts.id}>{ts.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Vehicle Type *</label>
+                      <select
+                        className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                        value={walkinForm.vehicleType}
+                        onChange={e => setWalkinForm(p => ({ ...p, vehicleType: e.target.value }))}
+                      >
+                        <option value="">Select vehicle type</option>
+                        {VEHICLE_TYPES.map(vt => (
+                          <option key={vt} value={vt}>{vt}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ─── Section 3: Instructor Assignment ─── */}
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
+                    <UserPlus size={13}/> Assign Instructor
+                  </div>
+                  {walkinForm.date && walkinForm.timeSlotId ? (
+                    walkinAvailableInstructors.length > 0 ? (
+                      <select
+                        className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                        value={walkinForm.instructorId}
+                        onChange={e => setWalkinForm(p => ({ ...p, instructorId: e.target.value }))}
+                      >
+                        <option value="">Select instructor</option>
+                        {walkinAvailableInstructors.map(inst => (
+                          <option key={inst.id} value={inst.id}>{inst.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">
+                        <AlertCircle size={14}/> No instructors available at this date and time.
+                      </div>
+                    )
+                  ) : (
+                    <div className="text-xs text-gray-400 italic p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      Select a date and time slot first to see available instructors.
+                    </div>
+                  )}
+                </div>
+
+                {/* ─── Error ─── */}
+                {walkinError && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">
+                    <AlertCircle size={14}/> {walkinError}
+                  </div>
+                )}
+
+                {/* ─── Submit ─── */}
+                <button
+                  onClick={handleWalkinSubmit}
+                  disabled={walkinSubmitting}
+                  className="w-full py-3 rounded-xl bg-primary text-white font-bold text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {walkinSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={16}/> Create Walk-in Booking
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
