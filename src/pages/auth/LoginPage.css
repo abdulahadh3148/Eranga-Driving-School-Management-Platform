@@ -93,10 +93,12 @@
 }
 
 .login-card {
-  background-color: var(--bg-card);
-  border-radius: 12px;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   padding: 24px;
   position: relative;
   overflow: hidden;
@@ -273,6 +275,7 @@
   font-weight: 400;
   color: var(--text-muted);
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 

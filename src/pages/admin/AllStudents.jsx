@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebase/config';
-import { collection, doc, updateDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, updateDoc, deleteDoc, onSnapshot, query, where, limit } from 'firebase/firestore';
 import { Search, Edit, Trash, X, Check, AlertCircle, CheckCircle, Eye } from 'lucide-react';
+import { PACKAGES } from '../../data/packages';
 
 export default function AllStudents() {
   const [students, setStudents] = useState([]);
@@ -20,13 +21,15 @@ export default function AllStudents() {
   const [form, setForm] = useState(initialFormState);
 
   useEffect(() => {
-    // Listen to the users collection directly
-    const q = query(collection(db, 'users'), where('role', '==', 'student'));
+    // Listen to the students collection directly, capped to 200 to prevent crash on large datasets
+    const q = query(collection(db, 'students'), limit(200));
     const unsubscribe = onSnapshot(q, (snap) => {
-      setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log("Fetched Students: ", data);
+      setStudents(data);
       setLoading(false);
     }, (err) => {
-      console.error(err);
+      console.error("Firebase fetch error:", err);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -58,11 +61,39 @@ export default function AllStudents() {
   };
 
   const handleDelete = async (id) => {
-    if (confirm("Are you sure you want to delete this student?")) {
+    if (window.confirm("Are you sure you want to delete this student and all their associated records? This action cannot be undone.")) {
       try {
-        // Delete directly from users collection
-        await deleteDoc(doc(db, 'users', id));
-        showToast('Student deleted successfully.');
+        const { writeBatch, collection, query, where, getDocs } = await import('firebase/firestore');
+        const batch = writeBatch(db);
+        
+        // Delete the main student document
+        batch.delete(doc(db, 'students', id));
+
+        // Helper to query and delete associated records
+        const deleteAssociated = async (colName, idField) => {
+          const q = query(collection(db, colName), where(idField, '==', id));
+          const snap = await getDocs(q);
+          snap.docs.forEach(d => batch.delete(d.ref));
+        };
+
+        // Delete from all associated collections
+        await deleteAssociated('sessions', 'studentId');
+        await deleteAssociated('session_progress', 'studentId');
+        await deleteAssociated('attendance', 'student_id');
+        await deleteAssociated('student_packages', 'student_id');
+        
+        // Handle variations in field names across older docs
+        await deleteAssociated('payments', 'student_id');
+        await deleteAssociated('payments', 'studentId');
+        
+        // Ensure bookings and mock tests are also deleted
+        await deleteAssociated('bookings', 'studentId');
+        await deleteAssociated('mock_test_results', 'studentId');
+
+        // Commit the batch deletion
+        await batch.commit();
+
+        showToast('Student and all related records deleted successfully.');
       } catch (err) {
         console.error(err);
         showToast('Failed to delete student.', 'error');
@@ -75,11 +106,15 @@ export default function AllStudents() {
     setSubmitting(true);
     try {
       if (isEditing) {
-        await updateDoc(doc(db, 'users', form.id), {
+        const selectedPkg = PACKAGES.find(p => p.id === form.packageId);
+        
+        await updateDoc(doc(db, 'students', form.id), {
           name: form.name,
           nic: form.nic,
           phone: form.phone,
           status: form.status,
+          packageId: form.packageId,
+          packageName: selectedPkg ? selectedPkg.name : null,
           updatedAt: new Date().toISOString()
         });
         
@@ -138,7 +173,7 @@ export default function AllStudents() {
                       <div className="text-xs text-gray-500">{s.email}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-gray-900 font-medium">{s.packageId || 'Not Enrolled'}</div>
+                      <div className="text-gray-900 font-medium">{s.packageName || s.enrolledPackage || s.packageId || 'Not Enrolled'}</div>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-lg text-xs font-bold capitalize
@@ -197,6 +232,15 @@ export default function AllStudents() {
                       <option value="pending">Pending</option>
                       <option value="approved">Approved</option>
                       <option value="suspended">Suspended</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Package / Course</label>
+                    <select value={form.packageId || ''} onChange={e => setForm({...form, packageId: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white">
+                      <option value="">Not Enrolled</option>
+                      {PACKAGES.map(pkg => (
+                        <option key={pkg.id} value={pkg.id}>{pkg.name}</option>
+                      ))}
                     </select>
                   </div>
                 </form>

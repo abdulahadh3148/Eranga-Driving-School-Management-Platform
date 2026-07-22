@@ -9,11 +9,10 @@ const navLinks = [
   { label: 'About', path: '/about' },
   { label: 'Courses', path: '/courses' },
   { label: 'Pricing', path: '/pricing' },
-  { label: 'Services', path: '/services' },
+  { label: 'Gallery', path: '/#gallery' },
   { label: 'Instructors', path: '/instructors' },
   { label: 'Vehicles', path: '/vehicles' },
   { label: 'Testimonials', path: '/testimonials' },
-  { label: 'FAQ', path: '/faq' },
   { label: 'Contact', path: '/contact' },
 ];
 
@@ -86,6 +85,14 @@ export default function Navbar() {
             <nav className="hidden xl:flex items-center gap-1">
               {navLinks.map(link => (
                 <Link key={link.path} to={link.path}
+                  onClick={(e) => {
+                    if (link.path.startsWith('/#') && location.pathname === '/') {
+                      e.preventDefault();
+                      const id = link.path.substring(2);
+                      const el = document.getElementById(id);
+                      if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }}
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors
                     ${location.pathname === link.path ? 'text-primary bg-primary/5' : 'text-gray-600 hover:text-primary hover:bg-primary/5'}`}>
                   {link.label}
@@ -138,6 +145,15 @@ export default function Navbar() {
               <nav className="p-4 space-y-1">
                 {navLinks.map(link => (
                   <Link key={link.path} to={link.path}
+                    onClick={(e) => {
+                      if (link.path.startsWith('/#') && location.pathname === '/') {
+                        e.preventDefault();
+                        const id = link.path.substring(2);
+                        const el = document.getElementById(id);
+                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+                      }
+                      setMobileOpen(false);
+                    }}
                     className={`block px-4 py-2.5 rounded-xl text-sm font-medium transition-colors
                       ${location.pathname === link.path ? 'text-primary bg-primary/5' : 'text-gray-700 hover:bg-gray-50'}`}>
                     {link.label}

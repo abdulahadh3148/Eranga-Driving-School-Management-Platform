@@ -10,6 +10,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import NotificationBell from '../components/ui/NotificationBell';
 import '../pages/instructor/instructor.css';
 
 export default function InstructorLayout() {
@@ -28,8 +29,7 @@ export default function InstructorLayout() {
     { icon: Home, label: 'Dashboard', path: '/instructor/dashboard' },
     { icon: Calendar, label: 'Schedule', path: '/instructor/schedule' },
     { icon: Users, label: 'Students', path: '/instructor/students' },
-    { icon: CheckCircle, label: 'Attendance', path: '/instructor/attendance' },
-    { icon: Clock, label: 'Hours', path: '/instructor/availability' },
+    { icon: Clock, label: 'Availability', path: '/instructor/availability' },
   ];
 
   const handleLogout = async () => {
@@ -50,7 +50,8 @@ export default function InstructorLayout() {
             <span className="material-symbols-outlined text-primary dark:text-primary-fixed cursor-pointer">menu</span>
             <h1 className="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed">Instructor Portal</h1>
           </div>
-          <div className="flex items-center gap-sm">
+          <div className="flex items-center gap-4">
+            <NotificationBell userId={currentUser?.uid} />
             <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-sm font-bold text-primary">
               {userProfile?.name?.charAt(0)?.toUpperCase() || 'I'}
             </div>

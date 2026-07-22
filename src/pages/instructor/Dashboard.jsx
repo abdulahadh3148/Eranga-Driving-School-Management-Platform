@@ -1,516 +1,214 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase/config';
-import { collection, query, where, doc, updateDoc, onSnapshot, addDoc } from 'firebase/firestore';
-import './Dashboard.css';
+import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
+import { Users, Calendar, CheckCircle, Clock, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
-// ─── Constants ─────────────────────────────────────────────
-const PROGRESS_OPTIONS = [
-  { value: 'not_started', label: 'Not Started', color: '#94a3b8', icon: 'circle' },
-  { value: 'started', label: 'Started', color: '#3b82f6', icon: 'play_circle' },
-  { value: 'practicing', label: 'Practicing', color: '#f59e0b', icon: 'directions_car' },
-  { value: 'needs_improvement', label: 'Needs Improvement', color: '#ef4444', icon: 'warning' },
-  { value: 'completed', label: 'Completed', color: '#22c55e', icon: 'check_circle' },
-];
-
-const CAR_SKILLS = ['Clutch Control', 'Forward Driving', 'Reverse Driving', 'Turning', 'Road Rules', 'Proper Stopping'];
-const BIKE_SKILLS = ['Forward Balance', 'Signal Usage', 'Figure-8 Practice', 'Road Rules'];
-
-// ─── Main Component ──────────────────────────────────────────────────────────
 export default function InstructorDashboard() {
   const { currentUser, userProfile } = useAuth();
-
+  const navigate = useNavigate();
+  
+  const [stats, setStats] = useState({
+    totalStudents: 0,
+    todayClasses: 0,
+    upcomingClasses: 0
+  });
+  const [todaySlots, setTodaySlots] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [sessions, setSessions] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [toastMessage, setToastMessage] = useState('');
-  const [completingSession, setCompletingSession] = useState(null);
-  const [sessionNotes, setSessionNotes] = useState('');
-  const [sessionProgress, setSessionProgress] = useState('not_started');
-  const [sessionSkills, setSessionSkills] = useState({});
-  const [sessionPerformance, setSessionPerformance] = useState('Average');
 
-  // ─── Determine instructor ID ────────────────────────────────────────────
   const instructorId = userProfile?.id || userProfile?.uid || currentUser?.uid;
 
-  // ─── Fetch sessions for this instructor ─────────────────────────────────
   useEffect(() => {
     if (!instructorId) return;
 
-    setLoading(true);
-    setError(null);
+    const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    
+    // Fetch students count
+    const fetchStudents = async () => {
+      try {
+        // 1. Fetch explicitly assigned students
+        const stuQ = query(collection(db, 'students'), where('assignedInstructorId', '==', instructorId));
+        const stuSnap = await getDocs(stuQ);
+        const assignedIds = new Set(stuSnap.docs.map(d => d.id));
 
-    // Real-time listener on sessions collection
-    const sessionsQuery = query(
-      collection(db, 'sessions'),
-      where('instructorId', '==', instructorId)
-    );
+        // 2. Fetch students who have a session with this instructor
+        const sessQ = query(collection(db, 'sessions'), where('instructorId', '==', instructorId));
+        const sessSnap = await getDocs(sessQ);
+        
+        // Extract unique student IDs from sessions
+        const sessionStudentIds = [...new Set(sessSnap.docs.map(d => d.data().studentId).filter(Boolean))];
+        
+        // Count total unique students
+        sessionStudentIds.forEach(id => assignedIds.add(id));
+        
+        setStats(prev => ({ ...prev, totalStudents: assignedIds.size }));
+      } catch (err) {
+        console.error("Error fetching student count:", err);
+      }
+    };
+    fetchStudents();
 
-    const unsub = onSnapshot(sessionsQuery, (snap) => {
-      const allSessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      console.log(`[Instructor Dashboard] Fetched ${allSessions.length} total sessions for instructor: ${instructorId}`);
-      setSessions(allSessions);
-      setLoading(false);
-    }, (err) => {
-      console.error('[Instructor Dashboard] Listener error:', err);
-      setError('Failed to load sessions. Please check your connection.');
+    // Listen to sessions
+    const sessionsQ = query(collection(db, 'sessions'), where('instructorId', '==', instructorId));
+    const unsubscribe = onSnapshot(sessionsQ, (snap) => {
+      let todayCount = 0;
+      let upcomingCount = 0;
+      const todayList = [];
+
+      snap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.status === 'scheduled') {
+          if (data.date === todayStr) {
+            todayCount++;
+            todayList.push({ id: doc.id, ...data });
+          } else if (data.date > todayStr) {
+            upcomingCount++;
+          }
+        }
+      });
+
+      todayList.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+      setTodaySlots(todayList);
+      setStats(prev => ({ ...prev, todayClasses: todayCount, upcomingClasses: upcomingCount }));
       setLoading(false);
     });
 
-    return () => unsub();
+    return () => unsubscribe();
   }, [instructorId]);
 
-  // ─── Filter & group by date and time ────────────────────────────────────
-  const todaySessions = sessions.filter(s => s.date === selectedDate);
-
-  const groupedByTime = todaySessions.reduce((acc, s) => {
-    const slot = s.time || 'Unscheduled';
-    if (!acc[slot]) acc[slot] = [];
-    acc[slot].push(s);
-    return acc;
-  }, {});
-
-  // Sort time slots
-  const sortedTimeSlots = Object.keys(groupedByTime).sort((a, b) => a.localeCompare(b));
-
-  // ─── Stats ──────────────────────────────────────────────────────────────
-  const totalToday = todaySessions.length;
-  const presentCount = todaySessions.filter(s => s.attendance === 'present').length;
-  const absentCount = todaySessions.filter(s => s.attendance === 'absent').length;
-  const completedCount = todaySessions.filter(s => s.status === 'completed').length;
-
-  // ─── Handlers ───────────────────────────────────────────────────────────
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(''), 3000);
-  };
-
-  const handleAttendance = async (sessionId, value) => {
-    try {
-      await updateDoc(doc(db, 'sessions', sessionId), {
-        attendance: value,
-        updatedAt: new Date().toISOString()
-      });
-      showToast(value === 'present' ? '✅ Marked Present' : '❌ Marked Absent');
-    } catch (err) {
-      console.error('Error updating attendance:', err);
-      showToast('Failed to update attendance');
-    }
-  };
-
-  const handleProgressChange = async (sessionId, newProgress) => {
-    try {
-      const updates = {
-        progress: newProgress,
-        updatedAt: new Date().toISOString()
-      };
-
-      // If marking as completed, also set session status
-      if (newProgress === 'completed') {
-        updates.status = 'completed';
-      }
-
-      await updateDoc(doc(db, 'sessions', sessionId), updates);
-
-      // If progress = completed, also update the student's overall status
-      if (newProgress === 'completed') {
-        const session = sessions.find(s => s.id === sessionId);
-        if (session?.studentId) {
-          try {
-            await updateDoc(doc(db, 'users', session.studentId), {
-              currentStep: 'PRACTICE_COMPLETED',
-              status: 'PRACTICE_COMPLETED',
-              progress: 100
-            });
-          } catch (studentErr) {
-            console.warn('Could not update student status:', studentErr);
-          }
-        }
-      }
-
-      showToast('Progress updated!');
-    } catch (err) {
-      console.error('Error updating progress:', err);
-      showToast('Failed to update progress');
-    }
-  };
-
-  const handleOpenCompleteModal = (session) => {
-    setCompletingSession(session);
-    setSessionNotes(session.notes || '');
-    setSessionProgress(session.progress || 'not_started');
-    setSessionSkills({});
-    setSessionPerformance('Average');
-  };
-
-  const handleCompleteSubmit = async () => {
-    if (!completingSession) return;
-
-    try {
-      const updates = {
-        status: 'completed',
-        progress: sessionProgress,
-        notes: sessionNotes,
-        attendance: completingSession.attendance || 'present',
-        updatedAt: new Date().toISOString()
-      };
-
-      await updateDoc(doc(db, 'sessions', completingSession.id), updates);
-
-      // Create session_progress document
-      const progressDoc = {
-        sessionId: completingSession.id,
-        studentId: completingSession.studentId,
-        instructorId: instructorId,
-        date: completingSession.date,
-        attendance: completingSession.attendance || 'present',
-        skills: sessionSkills,
-        performance: sessionPerformance,
-        notes: sessionNotes,
-        createdAt: new Date().toISOString()
-      };
-      await addDoc(collection(db, 'session_progress'), progressDoc);
-
-      // Update student status if progress is completed
-      if (sessionProgress === 'completed' && completingSession.studentId) {
-        try {
-          await updateDoc(doc(db, 'users', completingSession.studentId), {
-            currentStep: 'PRACTICE_COMPLETED',
-            status: 'PRACTICE_COMPLETED',
-            progress: 100
-          });
-        } catch (studentErr) {
-          console.warn('Could not update student status:', studentErr);
-        }
-      }
-
-      setCompletingSession(null);
-      showToast('Session completed successfully! 🎉');
-    } catch (err) {
-      console.error('Error completing session:', err);
-      showToast('Failed to complete session');
-    }
-  };
-
-  const handleStatusChange = async (sessionId, newStatus) => {
-    try {
-      await updateDoc(doc(db, 'sessions', sessionId), {
-        status: newStatus,
-        updatedAt: new Date().toISOString()
-      });
-      showToast(`Status updated to ${newStatus}`);
-    } catch (err) {
-      console.error('Error updating status:', err);
-      showToast('Failed to update status');
-    }
-  };
-
-  // ─── Date Navigation ───────────────────────────────────────────────────
-  const goToDate = (offset) => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + offset);
-    setSelectedDate(d.toISOString().split('T')[0]);
-  };
-
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
-
-  // ─── Loading State ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="dash-loading">
-        <div className="dash-spinner"></div>
-        <p>Loading your sessions...</p>
+      <div className="flex justify-center items-center py-20">
+        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="dash-error">
-        <span className="material-symbols-outlined">error</span>
-        <p>{error}</p>
-        <button onClick={() => window.location.reload()}>Retry</button>
-      </div>
-    );
-  }
-
-  // ─── Render ─────────────────────────────────────────────────────────────
   return (
-    <>
-      {/* Toast */}
-      {toastMessage && (
-        <div className="dash-toast">
-          <span className="material-symbols-outlined">check_circle</span>
-          {toastMessage}
+    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8 animate-fade-in">
+      
+      {/* Welcome Header */}
+      <div className="bg-gradient-to-r from-primary to-blue-800 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 opacity-10 transform translate-x-1/4 -translate-y-1/4">
+          <Calendar size={250} />
         </div>
-      )}
-
-      {/* Header */}
-      <div className="dash-header">
-        <div>
-          <h2 className="dash-title">
-            {isToday ? "Today's Sessions" : `Sessions for ${new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`}
-          </h2>
-          <p className="dash-subtitle">
-            {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+        <div className="relative z-10">
+          <h1 className="text-3xl md:text-4xl font-black mb-2 tracking-tight">
+            Welcome back, {userProfile?.name?.split(' ')[0] || 'Instructor'}! 👋
+          </h1>
+          <p className="text-blue-100 text-lg max-w-xl">
+            You have {stats.todayClasses} {stats.todayClasses === 1 ? 'class' : 'classes'} scheduled for today. Let's get out there and teach!
           </p>
         </div>
-
-        {/* Date Navigation */}
-        <div className="dash-date-nav">
-          <button onClick={() => goToDate(-1)} className="dash-date-btn">
-            <span className="material-symbols-outlined">chevron_left</span>
-          </button>
-          <button onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])} className={`dash-date-btn ${isToday ? 'active' : ''}`}>
-            Today
-          </button>
-          <button onClick={() => goToDate(1)} className="dash-date-btn">
-            <span className="material-symbols-outlined">chevron_right</span>
-          </button>
-        </div>
       </div>
 
-      {/* Stats Bar */}
-      <div className="dash-stats">
-        <div className="dash-stat">
-          <span className="material-symbols-outlined">groups</span>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <Users size={28} />
+          </div>
           <div>
-            <span className="stat-number">{totalToday}</span>
-            <span className="stat-label">Total</span>
+            <p className="text-gray-500 text-sm font-semibold uppercase tracking-wider">My Students</p>
+            <p className="text-3xl font-black text-gray-900">{stats.totalStudents}</p>
           </div>
         </div>
-        <div className="dash-stat present">
-          <span className="material-symbols-outlined">check_circle</span>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-14 h-14 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center">
+            <CheckCircle size={28} />
+          </div>
           <div>
-            <span className="stat-number">{presentCount}</span>
-            <span className="stat-label">Present</span>
+            <p className="text-gray-500 text-sm font-semibold uppercase tracking-wider">Today's Classes</p>
+            <p className="text-3xl font-black text-gray-900">{stats.todayClasses}</p>
           </div>
         </div>
-        <div className="dash-stat absent">
-          <span className="material-symbols-outlined">cancel</span>
-          <div>
-            <span className="stat-number">{absentCount}</span>
-            <span className="stat-label">Absent</span>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-14 h-14 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center">
+            <Clock size={28} />
           </div>
-        </div>
-        <div className="dash-stat completed">
-          <span className="material-symbols-outlined">task_alt</span>
           <div>
-            <span className="stat-number">{completedCount}</span>
-            <span className="stat-label">Done</span>
+            <p className="text-gray-500 text-sm font-semibold uppercase tracking-wider">Upcoming Bookings</p>
+            <p className="text-3xl font-black text-gray-900">{stats.upcomingClasses}</p>
           </div>
         </div>
       </div>
 
-      {/* Sessions Grouped by Time */}
-      <div className="dash-sessions">
-        {sortedTimeSlots.length > 0 ? (
-          sortedTimeSlots.map(slot => (
-            <div key={slot} className="time-slot-group">
-              <div className="time-slot-header">
-                <span className="material-symbols-outlined">schedule</span>
-                <span>{slot} Batch</span>
-                <span className="time-slot-count">{groupedByTime[slot].length} student(s)</span>
-              </div>
+      {/* Today's Schedule */}
+      <div>
+        <div className="flex justify-between items-end mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Today's Schedule</h2>
+            <p className="text-gray-500 text-sm mt-1">Manage your appointments for the day.</p>
+          </div>
+          <button 
+            onClick={() => navigate('/instructor/schedule')}
+            className="text-primary font-semibold text-sm flex items-center gap-1 hover:text-blue-800 transition-colors"
+          >
+            View Full Calendar <ChevronRight size={16} />
+          </button>
+        </div>
 
-              <div className="session-cards">
-                {groupedByTime[slot].map(session => {
-                  const isCompleted = session.status === 'completed';
-                  const isPresent = session.attendance === 'present';
-                  const isAbsent = session.attendance === 'absent';
-                  const progressOption = PROGRESS_OPTIONS.find(p => p.value === (session.progress || 'not_started'));
-
-                  return (
-                    <div key={session.id} className={`session-card ${isCompleted ? 'completed' : ''} ${isAbsent ? 'absent' : ''}`}>
-                      {/* Student Info Header */}
-                      <div className="session-card-top">
-                        <div className="student-info">
-                          <div className="student-avatar">
-                            {session.studentName ? session.studentName.charAt(0).toUpperCase() : 'S'}
-                          </div>
-                          <div>
-                            <h3 className="student-name">{session.studentName || 'Unknown Student'}</h3>
-                            <p className="student-meta">
-                              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>directions_car</span>
-                              {session.vehicleType || 'Any'} • ID: {session.studentId}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="session-badges">
-                          <span className={`status-badge status-${session.status || 'scheduled'}`}>
-                            {session.status || 'Scheduled'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Completed State */}
-                      {isCompleted ? (
-                        <div className="session-completed-bar">
-                          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                          <span>Session Completed</span>
-                          {session.notes && <p className="completed-notes">Notes: {session.notes}</p>}
-                        </div>
-                      ) : (
-                        <>
-                          {/* Attendance Section */}
-                          <div className={`attendance-section ${isAbsent ? 'absent-bg' : ''}`}>
-                            <span className="section-label">Attendance</span>
-                            <div className="attendance-btns">
-                              <button
-                                className={`att-btn present-btn ${isPresent ? 'active' : ''}`}
-                                onClick={() => handleAttendance(session.id, 'present')}
-                              >
-                                <span className="material-symbols-outlined">check</span>
-                                Present
-                              </button>
-                              <button
-                                className={`att-btn absent-btn ${isAbsent ? 'active' : ''}`}
-                                onClick={() => handleAttendance(session.id, 'absent')}
-                              >
-                                <span className="material-symbols-outlined">close</span>
-                                Absent
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Progress Section (show only if present) */}
-                          {isPresent && (
-                            <div className="progress-section">
-                              <span className="section-label">Training Progress</span>
-                              <select
-                                className="progress-select"
-                                value={session.progress || 'not_started'}
-                                onChange={(e) => handleProgressChange(session.id, e.target.value)}
-                                style={{ borderColor: progressOption?.color }}
-                              >
-                                {PROGRESS_OPTIONS.map(opt => (
-                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                              </select>
-                            </div>
-                          )}
-
-                          {/* Action Buttons */}
-                          {(isPresent || isAbsent) && (
-                            <div className="session-actions">
-                              {isPresent && session.status !== 'ongoing' && (
-                                <button
-                                  className="action-btn start-btn"
-                                  onClick={() => handleStatusChange(session.id, 'ongoing')}
-                                >
-                                  <span className="material-symbols-outlined">play_arrow</span>
-                                  Start Session
-                                </button>
-                              )}
-                              <button
-                                className="action-btn complete-btn"
-                                onClick={() => handleOpenCompleteModal(session)}
-                              >
-                                <span className="material-symbols-outlined">check_circle</span>
-                                Complete & Add Notes
-                              </button>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+        {todaySlots.length === 0 ? (
+          <div className="bg-gray-50 rounded-3xl border border-dashed border-gray-300 p-12 text-center">
+            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+              <Calendar size={32} className="text-gray-400" />
             </div>
-          ))
+            <h3 className="text-xl font-bold text-gray-700">Your day is clear!</h3>
+            <p className="text-gray-500 mt-2">There are no classes scheduled for you today.</p>
+          </div>
         ) : (
-          <div className="dash-empty">
-            <span className="material-symbols-outlined">event_available</span>
-            <h3>No Sessions</h3>
-            <p>No sessions scheduled for this date. Enjoy your break!</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {todaySlots.map((slot) => (
+              <div key={slot.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group">
+                <div className="flex h-full">
+                  {/* Time Indicator */}
+                  <div className="w-32 bg-gray-50 p-6 border-r border-gray-100 flex flex-col justify-center items-center text-center">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Time</span>
+                    <span className="text-lg font-black text-primary">{slot.time || slot.timeSlotId}</span>
+                  </div>
+                  
+                  {/* Content */}
+                  <div className="flex-1 p-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <span className={`text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider ${
+                          slot.sessionType === 'theory' ? 'bg-purple-100 text-purple-700' :
+                          slot.sessionType === 'exam_prep' ? 'bg-orange-100 text-orange-700' :
+                          'bg-blue-100 text-blue-700'
+                        }`}>
+                          {slot.sessionType === 'theory' ? 'Theory Class' : slot.sessionType === 'exam_prep' ? 'Exam Prep' : 'Practical Driving'}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="mb-6">
+                      <p className="text-sm font-semibold text-gray-500 mb-1 uppercase tracking-wider">Student</p>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
+                          {slot.studentName?.charAt(0)?.toUpperCase() || 'S'}
+                        </div>
+                        <p className="text-xl font-bold text-gray-900">{slot.studentName || 'Unknown Student'}</p>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={() => navigate(`/instructor/students/${slot.studentId}`)}
+                      className="w-full py-3 bg-gray-50 hover:bg-primary hover:text-white text-gray-700 font-bold rounded-xl transition-colors duration-200 flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle size={18} />
+                      Log Session & Mark Progress
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Complete Session Modal */}
-      {completingSession && (
-        <div className="modal-overlay" onClick={() => setCompletingSession(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">
-              <span className="material-symbols-outlined">check_circle</span>
-              Complete Session
-            </h3>
-            <p className="modal-student">
-              Student: <strong>{completingSession.studentName}</strong> 
-              <span style={{color: '#64748b', fontSize: 13, marginLeft: 8}}>({completingSession.vehicleType || 'Car'})</span>
-            </p>
-
-            <div className="modal-scroll-area">
-              <div className="modal-field">
-                <label>Skills Practiced</label>
-                <div className="skills-grid">
-                  {(completingSession.vehicleType?.toLowerCase().includes('bike') ? BIKE_SKILLS : CAR_SKILLS).map(skill => (
-                    <label key={skill} className="skill-checkbox">
-                      <input 
-                        type="checkbox" 
-                        checked={!!sessionSkills[skill]} 
-                        onChange={(e) => setSessionSkills({...sessionSkills, [skill]: e.target.checked})}
-                      />
-                      <span>{skill}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="modal-field-row">
-                <div className="modal-field">
-                  <label>Performance Rating</label>
-                  <select
-                    value={sessionPerformance}
-                    onChange={e => setSessionPerformance(e.target.value)}
-                    className="modal-select"
-                  >
-                    <option value="Good">Good</option>
-                    <option value="Average">Average</option>
-                    <option value="Needs Improvement">Needs Improvement</option>
-                  </select>
-                </div>
-
-                <div className="modal-field">
-                  <label>Overall Progress</label>
-                  <select
-                    value={sessionProgress}
-                    onChange={e => setSessionProgress(e.target.value)}
-                    className="modal-select"
-                  >
-                    {PROGRESS_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="modal-field">
-                <label>Instructor Notes (Feedback, Mistakes, Suggestions)</label>
-                <textarea
-                  value={sessionNotes}
-                  onChange={e => setSessionNotes(e.target.value)}
-                  placeholder="e.g., Good clutch control. Needs more practice with hill starts..."
-                  rows={3}
-                  className="modal-textarea"
-                />
-              </div>
-            </div>
-
-            <div className="modal-actions">
-              <button className="modal-btn cancel" onClick={() => setCompletingSession(null)}>
-                Cancel
-              </button>
-              <button className="modal-btn submit" onClick={handleCompleteSubmit}>
-                <span className="material-symbols-outlined">check</span>
-                Save & Complete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }

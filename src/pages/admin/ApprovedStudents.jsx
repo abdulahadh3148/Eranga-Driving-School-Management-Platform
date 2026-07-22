@@ -1,25 +1,26 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { db } from '../../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 
 export default function ApprovedStudents() {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchStudents = async () => {
-      try {
-        const q = query(collection(db, 'users'), where('role', '==', 'student'), where('status', 'in', ['approved', 'L_PERMIT_APPROVED', 'IN_TRAINING', 'PRACTICE_COMPLETED', 'TRIAL_PENDING']));
-        const snap = await getDocs(q);
-        setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchStudents();
+    setLoading(true);
+    const q = query(collection(db, 'students'), where('status', 'in', ['approved', 'L_PERMIT_APPROVED', 'IN_TRAINING', 'PRACTICE_COMPLETED', 'TRIAL_PENDING']));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log("Fetched Approved Students: ", data);
+      setStudents(data);
+      setLoading(false);
+    }, (err) => {
+      console.error(err);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   return (

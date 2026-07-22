@@ -1,201 +1,293 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { db } from '../../firebase/config';
-import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, increment } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
-import { Calendar, Users, CheckCircle, Clock, XCircle, Save } from 'lucide-react';
-import { generateCustomId } from '../../utils/idGenerator';
+import { CheckCircle, Clock, User, Star, MapPin } from 'lucide-react';
+
+const RatingInput = ({ label, value, onChange }) => {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-gray-50 rounded-xl">
+      <span className="font-bold text-gray-700 text-sm">{label}</span>
+      <div className="flex items-center gap-2">
+        {[1, 2, 3, 4, 5].map((num) => (
+          <button
+            key={num}
+            type="button"
+            onClick={() => onChange(num)}
+            className={`w-10 h-10 rounded-full font-bold transition-all ${
+              value === num 
+                ? 'bg-primary text-white shadow-md shadow-orange-500/20' 
+                : 'bg-white text-gray-500 border border-gray-200 hover:border-primary/50'
+            }`}
+          >
+            {num}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 export default function InstructorAttendance() {
   const { userProfile } = useAuth();
-  const [batches, setBatches] = useState([]);
-  const [selectedBatch, setSelectedBatch] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   
-  const [students, setStudents] = useState([]);
-  const [attendance, setAttendance] = useState({}); // { studentId: 'present' | 'absent' | 'late' }
+  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [submittingId, setSubmittingId] = useState(null);
+
+  // Forms state: keyed by sessionId
+  const [forms, setForms] = useState({});
 
   useEffect(() => {
-    const fetchBatches = async () => {
-      if (!userProfile?.id) return;
-      try {
-        const q = query(collection(db, 'batches'), where('instructorId', '==', userProfile.id));
-        const snap = await getDocs(q);
-        setBatches(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (err) {
-        console.error("Error fetching batches", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchBatches();
+    fetchTodaySessions();
   }, [userProfile]);
 
-  useEffect(() => {
-    const fetchBatchData = async () => {
-      if (!selectedBatch) {
-        setStudents([]);
-        setAttendance({});
-        return;
-      }
+  const fetchTodaySessions = async () => {
+    if (!userProfile?.id) return;
+    setLoading(true);
+    
+    try {
+      // Get today's date string in YYYY-MM-DD
+      const today = new Date().toISOString().split('T')[0];
+      
+      const q = query(
+        collection(db, 'schedules'), 
+        where('instructorId', '==', userProfile.id),
+        where('date', '==', today)
+      );
+      
+      const snap = await getDocs(q);
+      const fetchedSessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Filter out those already completed, and sort by time
+      const pendingSessions = fetchedSessions
+        .filter(s => s.status !== 'Completed' && s.status !== 'completed')
+        .sort((a, b) => a.time.localeCompare(b.time));
 
-      setLoading(true);
-      try {
-        const batch = batches.find(b => b.id === selectedBatch);
-        if (batch && batch.studentIds && batch.studentIds.length > 0) {
-          // Fetch student details
-          const stPromises = batch.studentIds.map(id => getDocs(query(collection(db, 'users'), where('__name__', '==', id))));
-          const stSnaps = await Promise.all(stPromises);
-          const stData = stSnaps.map(snap => snap.docs[0]).filter(Boolean).map(d => ({ id: d.id, ...d.data() }));
-          setStudents(stData);
+      setSessions(pendingSessions);
+      
+      // Initialize form states
+      const initialForms = {};
+      pendingSessions.forEach(s => {
+        initialForms[s.id] = {
+          attendance: 'Present',
+          ratings: {
+            steering: 3,
+            gear: 3,
+            parking: 3
+          },
+          remarks: ''
+        };
+      });
+      setForms(initialForms);
 
-          // Fetch existing attendance for this batch & date
-          const attQ = query(
-            collection(db, 'attendance'), 
-            where('batch_id', '==', selectedBatch),
-            where('date', '==', date)
-          );
-          const attSnap = await getDocs(attQ);
-          const existingAtt = {};
-          
-          // Default all to present if no existing record
-          stData.forEach(s => {
-            existingAtt[s.id] = 'present';
-          });
-
-          attSnap.forEach(d => {
-            const data = d.data();
-            existingAtt[data.student_id] = data.status;
-          });
-
-          setAttendance(existingAtt);
-        } else {
-          setStudents([]);
-          setAttendance({});
-        }
-      } catch (err) {
-        console.error("Error fetching batch students", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchBatchData();
-  }, [selectedBatch, date, batches]);
-
-  const handleStatusChange = (studentId, status) => {
-    setAttendance(prev => ({ ...prev, [studentId]: status }));
+    } catch (err) {
+      console.error("Error fetching sessions:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSave = async () => {
-    if (students.length === 0) return;
-    setSaving(true);
+  const updateForm = (sessionId, field, value) => {
+    setForms(prev => ({
+      ...prev,
+      [sessionId]: {
+        ...prev[sessionId],
+        [field]: value
+      }
+    }));
+  };
+
+  const updateRating = (sessionId, category, value) => {
+    setForms(prev => ({
+      ...prev,
+      [sessionId]: {
+        ...prev[sessionId],
+        ratings: {
+          ...prev[sessionId].ratings,
+          [category]: value
+        }
+      }
+    }));
+  };
+
+  const handleSubmit = async (sessionId, studentId) => {
+    const formData = forms[sessionId];
+    if (!formData) return;
+    
+    setSubmittingId(sessionId);
     try {
-      const promises = students.map(async (student) => {
-        // Create deterministic ID based on batch, date, student to easily update
-        const recordId = `${selectedBatch}_${date}_${student.id}`;
-        return setDoc(doc(db, 'attendance', recordId), {
-          student_id: student.id,
-          student_name: student.name,
-          batch_id: selectedBatch,
-          instructor_id: userProfile.id,
-          date: date,
-          status: attendance[student.id] || 'present',
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
+      // 1. Update the Session Document
+      await updateDoc(doc(db, 'schedules', sessionId), {
+        status: 'Completed',
+        attendance: formData.attendance,
+        ratings: formData.ratings,
+        remarks: formData.remarks,
+        completedAt: new Date().toISOString()
       });
 
-      await Promise.all(promises);
-      alert('Attendance saved successfully!');
+      // 2. Update Student Profile if Present
+      if (formData.attendance === 'Present') {
+        await updateDoc(doc(db, 'students', studentId), {
+          classesCompleted: increment(1)
+        });
+      }
+
+      // 3. Remove session from view
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      
     } catch (err) {
-      console.error(err);
-      alert('Error saving attendance');
+      console.error('Error submitting tracker:', err);
+      alert('Failed to save. Please try again.');
     } finally {
-      setSaving(false);
+      setSubmittingId(null);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pt-6 pb-20 px-4 md:px-0">
+    <div className="max-w-3xl mx-auto space-y-6 pt-6 pb-20 px-4 md:px-0">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-gray-900">Mark Attendance</h1>
-        <p className="text-gray-500 text-sm mt-1">Record daily attendance for your assigned batches.</p>
+        <h1 className="text-2xl font-bold text-gray-900">Daily Tracker</h1>
+        <p className="text-gray-500 text-sm mt-1">
+          Track today's sessions, mark attendance, and grade your students.
+        </p>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4">
-        <div className="flex-1">
-          <label className="block text-xs font-bold text-gray-700 mb-1">Select Batch</label>
-          <select value={selectedBatch} onChange={e => setSelectedBatch(e.target.value)} className="w-full px-4 py-2 border rounded-xl outline-none focus:border-primary text-sm">
-            <option value="">-- Choose Batch --</option>
-            {batches.map(b => (
-              <option key={b.id} value={b.id}>{b.name} ({b.vehicleType})</option>
-            ))}
-          </select>
+      {loading ? (
+        <div className="p-12 text-center">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-sm text-gray-500 mt-4">Loading today's schedule...</p>
         </div>
-        <div className="flex-1">
-          <label className="block text-xs font-bold text-gray-700 mb-1">Date</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-4 py-2 border rounded-xl outline-none focus:border-primary text-sm" />
-        </div>
-      </motion.div>
-
-      {selectedBatch && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-            <h2 className="font-bold text-gray-900 flex items-center gap-2">
-              <Users size={18} className="text-primary"/> Students ({students.length})
-            </h2>
-          </div>
-
-          {loading ? (
-             <div className="p-8 text-center"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div></div>
-          ) : students.length === 0 ? (
-            <div className="p-8 text-center text-gray-500 text-sm">No students found in this batch.</div>
-          ) : (
-            <div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-bold">
-                    <tr>
-                      <th className="px-6 py-4">Student</th>
-                      <th className="px-6 py-4 text-center">Present</th>
-                      <th className="px-6 py-4 text-center">Late</th>
-                      <th className="px-6 py-4 text-center">Absent</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {students.map(student => {
-                      const stat = attendance[student.id] || 'present';
-                      return (
-                        <tr key={student.id} className="hover:bg-gray-50/50">
-                          <td className="px-6 py-4">
-                            <p className="font-bold text-gray-900">{student.name}</p>
-                            <p className="text-xs text-gray-500">{student.id}</p>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <input type="radio" name={`att_${student.id}`} checked={stat === 'present'} onChange={() => handleStatusChange(student.id, 'present')} className="w-5 h-5 text-green-500 cursor-pointer" />
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <input type="radio" name={`att_${student.id}`} checked={stat === 'late'} onChange={() => handleStatusChange(student.id, 'late')} className="w-5 h-5 text-yellow-500 cursor-pointer" />
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <input type="radio" name={`att_${student.id}`} checked={stat === 'absent'} onChange={() => handleStatusChange(student.id, 'absent')} className="w-5 h-5 text-red-500 cursor-pointer" />
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="p-4 border-t border-gray-100 flex justify-end">
-                <button onClick={handleSave} disabled={saving} className="px-6 py-2 bg-primary text-white font-bold rounded-xl hover:bg-orange-600 disabled:opacity-50 flex items-center gap-2">
-                  {saving ? 'Saving...' : <><Save size={18} /> Save Attendance</>}
-                </button>
-              </div>
-            </div>
-          )}
+      ) : sessions.length === 0 ? (
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-12 text-center">
+          <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">You're all caught up!</h2>
+          <p className="text-gray-500">There are no pending sessions to track for today.</p>
         </motion.div>
+      ) : (
+        <div className="space-y-6">
+          {sessions.map((session, index) => {
+            const formData = forms[session.id];
+            if (!formData) return null;
+
+            return (
+              <motion.div 
+                key={session.id} 
+                initial={{ opacity: 0, y: 20 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                transition={{ delay: index * 0.1 }}
+                className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+              >
+                {/* Header */}
+                <div className="bg-gray-900 p-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center font-bold text-xl">
+                      {session.studentName?.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg leading-tight">{session.studentName}</h3>
+                      <div className="flex items-center gap-2 text-gray-400 text-xs mt-1">
+                        <span className="flex items-center gap-1"><Clock size={12}/> {session.time}</span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1 uppercase tracking-wider">{session.vehicle}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Body */}
+                <div className="p-6 space-y-6">
+                  
+                  {/* Attendance */}
+                  <div>
+                    <label className="block text-sm font-bold text-gray-900 mb-3">Attendance</label>
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => updateForm(session.id, 'attendance', 'Present')}
+                        className={`flex-1 py-3 rounded-xl border-2 font-bold transition-all flex items-center justify-center gap-2 ${
+                          formData.attendance === 'Present' 
+                            ? 'border-green-500 bg-green-50 text-green-700' 
+                            : 'border-gray-200 text-gray-500 hover:border-green-200'
+                        }`}
+                      >
+                        <User size={18} /> Present
+                      </button>
+                      <button
+                        onClick={() => updateForm(session.id, 'attendance', 'Absent')}
+                        className={`flex-1 py-3 rounded-xl border-2 font-bold transition-all flex items-center justify-center gap-2 ${
+                          formData.attendance === 'Absent' 
+                            ? 'border-red-500 bg-red-50 text-red-700' 
+                            : 'border-gray-200 text-gray-500 hover:border-red-200'
+                        }`}
+                      >
+                        <User size={18} /> Absent
+                      </button>
+                    </div>
+                  </div>
+
+                  {formData.attendance === 'Present' && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-6">
+                      
+                      {/* Ratings */}
+                      <div>
+                        <label className="block text-sm font-bold text-gray-900 mb-3">Performance Ratings (1-5)</label>
+                        <div className="space-y-3">
+                          <RatingInput 
+                            label="Steering Control" 
+                            value={formData.ratings.steering} 
+                            onChange={(v) => updateRating(session.id, 'steering', v)} 
+                          />
+                          <RatingInput 
+                            label="Gear Shifting" 
+                            value={formData.ratings.gear} 
+                            onChange={(v) => updateRating(session.id, 'gear', v)} 
+                          />
+                          <RatingInput 
+                            label="Parking Skills" 
+                            value={formData.ratings.parking} 
+                            onChange={(v) => updateRating(session.id, 'parking', v)} 
+                          />
+                        </div>
+                      </div>
+
+                      {/* Remarks */}
+                      <div>
+                        <label className="block text-sm font-bold text-gray-900 mb-2">Remarks / Notes</label>
+                        <textarea
+                          rows={3}
+                          placeholder="How did the student perform today? Any areas of improvement?"
+                          value={formData.remarks}
+                          onChange={(e) => updateForm(session.id, 'remarks', e.target.value)}
+                          className="w-full p-4 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/20 outline-none transition-all font-medium text-gray-700 resize-none"
+                        ></textarea>
+                      </div>
+
+                    </motion.div>
+                  )}
+
+                </div>
+                
+                {/* Submit Action */}
+                <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
+                  <button
+                    onClick={() => handleSubmit(session.id, session.studentId)}
+                    disabled={submittingId === session.id}
+                    className="px-8 py-3 bg-primary text-white font-bold rounded-xl hover:bg-orange-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {submittingId === session.id ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <CheckCircle size={18} />
+                    )}
+                    Mark Completed
+                  </button>
+                </div>
+
+              </motion.div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

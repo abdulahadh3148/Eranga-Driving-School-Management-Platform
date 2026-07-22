@@ -130,14 +130,16 @@ export default function EnrollPackage() {
       const endDate = new Date();
       endDate.setDate(startDate.getDate() + 30); // Default 30 days duration
 
-      // Create student_packages record
-      await addDoc(collection(db, 'student_packages'), {
+      // Calculate 30% advance
+      const advanceFee = Math.round(pkg.price * 0.3);
+
+      const payload = {
         student_id: currentUser.uid,
         package_id: pkg.id,
         package_name: pkg.name,
         category_id: resolvedCatId,
         category_name: category?.name || '',
-        included_vehicles: [pkg.name], // Can be expanded later if combo array is added to local data
+        included_vehicles: [pkg.name],
         total_classes: 20, // Default for now
         completed_classes: 0,
         skills: [], 
@@ -148,36 +150,21 @@ export default function EnrollPackage() {
         terms_accepted: true,
         terms_accepted_at: new Date().toISOString(),
         price: pkg.price,
-      });
-
-      // Update user profile
-      const updates = {
-        packageId: pkg.id,
-        packageName: pkg.name,
-        categoryId: resolvedCatId,
-        classesTotal: 20,
-        classesCompleted: 0,
-        outstandingFees: (userProfile?.outstandingFees || 0) + pkg.price,
       };
-      await updateDoc(doc(db, 'users', currentUser.uid), updates);
-      setUserProfile({ ...userProfile, ...updates });
 
-      // Pending payment
-      await addDoc(collection(db, 'payments'), {
-        studentId: currentUser.uid,
-        packageId: pkg.id,
-        amount: pkg.price,
-        status: 'pending',
-        method: 'Cash/Bank Transfer',
-        date: new Date().toISOString(),
-        description: `Enrollment: ${pkg.name}`,
+      // Redirect to Checkout Page for the 30% advance
+      navigate('/student/checkout', {
+        state: {
+          type: 'package',
+          fee: advanceFee,
+          title: `Enroll in ${pkg.name}`,
+          payload: payload
+        }
       });
-
-      setSuccess(true);
-      setTimeout(() => navigate('/student/package'), 2500);
+      
     } catch (err) {
       console.error(err);
-      setError('Failed to enroll. Please try again.');
+      setError('Failed to process enrollment. Please try again.');
       setSubmitting(false);
     }
   };
@@ -314,7 +301,7 @@ export default function EnrollPackage() {
               className={`w-full py-4 rounded-xl font-black text-white text-sm transition-all
                 bg-gradient-to-r ${theme.gradient} hover:opacity-90 shadow-lg
                 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none`}>
-              {submitting ? 'Processing…' : `Confirm & Enroll — Rs. ${Number(pkg.price).toLocaleString()}`}
+              {submitting ? 'Processing…' : `Pay 30% Advance (Rs. ${Number(Math.round(pkg.price * 0.3)).toLocaleString()})`}
             </button>
             <button type="button" onClick={() => navigate(-1)} disabled={submitting}
               className="w-full py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors">

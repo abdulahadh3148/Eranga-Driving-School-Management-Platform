@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { db } from '../../firebase/config';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, onSnapshot } from 'firebase/firestore';
 import { Users, FileText, CheckCircle, ShieldAlert, CreditCard, Award } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -12,44 +12,42 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchStudents = async () => {
-      try {
-        const q = query(collection(db, 'users'), where('role', '==', 'student'));
-        const snap = await getDocs(q);
-        
-        let allStudents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Client-side sort to prevent Firebase missing index error
-        allStudents.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-        
-        let pendingMedical = 0;
-        let pendingPermit = 0;
-        let readyForTrial = 0;
+    const q = query(collection(db, 'students'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      let allStudents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log("Fetched Students in Dashboard: ", allStudents);
+      // Client-side sort to prevent Firebase missing index error
+      allStudents.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      
+      let pendingMedical = 0;
+      let pendingPermit = 0;
+      let readyForTrial = 0;
 
-        const enrichedStudents = allStudents.map(student => {
-          const medStatus = student.medical_status || 'not_started';
-          if (medStatus === 'uploaded') pendingMedical++;
+      const enrichedStudents = allStudents.map(student => {
+        const medStatus = student.medical_status || 'not_started';
+        if (medStatus === 'submitted') pendingMedical++;
 
-          const permitStatus = student.permit_status || 'not_started';
-          if (permitStatus === 'uploaded') pendingPermit++;
+        const permitStatus = student.l_permit_status || student.permit_status || 'not_started';
+        if (permitStatus === 'submitted') pendingPermit++;
 
-          const practiceDone = (student.classesTotal > 0) && (student.classesCompleted >= student.classesTotal);
-          const paymentDone = student.total_price > 0 && student.outstandingFees <= 0;
-          if (practiceDone && paymentDone && student.trial_status !== 'completed' && student.trial_status !== 'scheduled') {
-            readyForTrial++;
-          }
+        const practiceDone = student.practiceStatus === 'waiting_for_trial' || ((student.classesTotal > 0) && (student.classesCompleted >= student.classesTotal));
+        const paymentDone = student.total_price > 0 && student.outstandingFees <= 0;
+        if ((student.practiceStatus === 'waiting_for_trial' || practiceDone) && student.trial_status !== 'completed' && student.trial_status !== 'scheduled') {
+          readyForTrial++;
+        }
 
-          return { ...student, practiceDone, paymentDone };
-        });
+        return { ...student, practiceDone, paymentDone };
+      });
 
-        setStats({ total: allStudents.length, pendingMedical, pendingPermit, readyForTrial });
-        setStudents(enrichedStudents);
-      } catch (err) {
-        console.error("Error fetching students:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchStudents();
+      setStats({ total: allStudents.length, pendingMedical, pendingPermit, readyForTrial });
+      setStudents(enrichedStudents);
+      setLoading(false);
+    }, (err) => {
+      console.error("Error fetching students:", err);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const statCards = [
@@ -69,7 +67,7 @@ export default function AdminDashboard() {
   const getStatusBadge = (type, val) => {
     if (type === 'doc') {
       if (val === 'approved') return <span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold uppercase">Approved</span>;
-      if (val === 'uploaded') return <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-700 text-xs font-bold uppercase animate-pulse">Needs Review</span>;
+      if (val === 'submitted') return <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-700 text-xs font-bold uppercase animate-pulse">Needs Review</span>;
       return <span className="px-2 py-1 rounded bg-gray-100 text-gray-500 text-xs font-bold uppercase">Missing</span>;
     }
   };
@@ -155,6 +153,8 @@ export default function AdminDashboard() {
                         <span className="text-green-600 font-bold text-xs flex items-center justify-center gap-1"><CheckCircle size={14}/> Passed</span>
                       ) : s.trial_status === 'scheduled' ? (
                         <span className="text-blue-600 font-bold text-xs">{s.trial_date}</span>
+                      ) : s.practiceStatus === 'waiting_for_trial' ? (
+                        <span className="px-2 py-1 rounded bg-orange-100 text-orange-700 font-bold text-xs uppercase animate-pulse">Ready</span>
                       ) : (
                         <span className="text-gray-400 text-xs font-bold uppercase">Pending</span>
                       )}

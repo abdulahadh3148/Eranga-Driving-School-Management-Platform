@@ -16,6 +16,9 @@ import {
   getStudentMetrics, getInstructorMetrics, getVehicleMetrics,
   getPaymentMetrics, getScheduleMetrics
 } from '../../utils/reportAggregations';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import './Reports.css';
 
 // ─── Custom Recharts Tooltip ─────────────────────────────────────────────────
@@ -62,7 +65,8 @@ function KPICard({ icon: Icon, label, value, sub, color, bgColor, delay = 0 }) {
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function AdminReports() {
   // ── Data State ──
-  const [users, setUsers] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [instructors, setInstructors] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -79,8 +83,12 @@ export default function AdminReports() {
 
   // ── Fetch all data with real-time updates ──
   useEffect(() => {
-    const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
-      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const unsubStudents = onSnapshot(collection(db, 'students'), snap => {
+      setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    const unsubInstructors = onSnapshot(collection(db, 'instructors'), snap => {
+      setInstructors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
     const unsubVehicles = onSnapshot(collection(db, 'vehicles'), snap => {
@@ -99,7 +107,8 @@ export default function AdminReports() {
     setLoading(false);
 
     return () => {
-      unsubUsers();
+      unsubStudents();
+      unsubInstructors();
       unsubVehicles();
       unsubSchedules();
       unsubPayments();
@@ -107,75 +116,150 @@ export default function AdminReports() {
   }, []);
 
   // ── Computed Metrics ──
-  const studentMetrics = useMemo(() => getStudentMetrics(users, schedules, filters), [users, schedules, filters]);
-  const instructorMetrics = useMemo(() => getInstructorMetrics(users, schedules, filters), [users, schedules, filters]);
+  const studentMetrics = useMemo(() => getStudentMetrics(students, schedules, filters), [students, schedules, filters]);
+  const instructorMetrics = useMemo(() => getInstructorMetrics(instructors, schedules, filters), [instructors, schedules, filters]);
   const vehicleMetrics = useMemo(() => getVehicleMetrics(vehicles, schedules, filters), [vehicles, schedules, filters]);
   const paymentMetrics = useMemo(() => getPaymentMetrics(payments, filters), [payments, filters]);
   const scheduleMetrics = useMemo(() => getScheduleMetrics(schedules, filters), [schedules, filters]);
 
   // ── Instructors list for filter dropdown ──
-  const instructorsList = useMemo(() => users.filter(u => u.role === 'instructor'), [users]);
+  const instructorsList = instructors;
 
   // ── Export to PDF ──
-  const handleExportPDF = useCallback(async () => {
-    const { default: jsPDF } = await import('jspdf');
-    await import('jspdf-autotable');
-
-    const pdf = new jsPDF();
-    pdf.setFontSize(18);
-    pdf.text('Driving School — Reports', 14, 22);
+  const handleExportPDF = useCallback(() => {
+    try {
+      const pdf = new jsPDF();
+    const primaryColor = [11, 37, 69]; // #0B2545
+    
+    // Header
+    pdf.setFillColor(...primaryColor);
+    pdf.rect(0, 0, 210, 40, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(24);
+    pdf.setFont("helvetica", "bold");
+    pdf.text('ERANGA DRIVING SCHOOL', 14, 20);
     pdf.setFontSize(10);
-    pdf.setTextColor(128);
-    pdf.text(`Generated: ${new Date().toLocaleString()}`, 14, 30);
+    pdf.setFont("helvetica", "normal");
+    pdf.text('Professional Analytics & Performance Report', 14, 28);
+    pdf.text(`Generated on: ${new Date().toLocaleString()}`, 14, 34);
 
-    // KPI Summary Table
-    pdf.autoTable({
-      startY: 38,
-      head: [['Metric', 'Value']],
+    let currentY = 50;
+
+    // 1. Operational Summary
+    pdf.setFontSize(14);
+    pdf.setTextColor(...primaryColor);
+    pdf.setFont("helvetica", "bold");
+    pdf.text('1. Operational Summary', 14, currentY);
+    
+    autoTable(pdf, {
+      startY: currentY + 5,
+      head: [['Metric', 'Total', 'Active/Completed']],
       body: [
-        ['Total Students', String(studentMetrics.total)],
-        ['Active Students', String(studentMetrics.active)],
-        ['Total Instructors', String(instructorMetrics.total)],
-        ['Total Vehicles', String(vehicleMetrics.total)],
-        ['Active Vehicles', String(vehicleMetrics.active)],
-        ['Total Sessions', String(scheduleMetrics.total)],
-        ['Completed Sessions', String(scheduleMetrics.completed)],
-        ['Cancelled Sessions', String(scheduleMetrics.cancelled)],
-        ['Upcoming Sessions', String(scheduleMetrics.upcoming)],
-        ['Total Revenue', `Rs. ${paymentMetrics.totalIncome.toLocaleString()}`],
-        ['Pending Payments', `Rs. ${paymentMetrics.pendingAmount.toLocaleString()}`],
+        ['Students', String(studentMetrics.total), String(studentMetrics.active)],
+        ['Instructors', String(instructorMetrics.total), '-'],
+        ['Vehicles', String(vehicleMetrics.total), String(vehicleMetrics.active)],
+        ['Sessions', String(scheduleMetrics.total), String(scheduleMetrics.completed)],
       ],
-      theme: 'striped',
-      headStyles: { fillColor: [11, 37, 69] },
+      theme: 'grid',
+      headStyles: { fillColor: primaryColor, textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      margin: { left: 14, right: 14 },
+    });
+    
+    currentY = pdf.lastAutoTable.finalY + 15;
+
+    // 2. Financial Summary
+    pdf.setFontSize(14);
+    pdf.setTextColor(...primaryColor);
+    pdf.setFont("helvetica", "bold");
+    pdf.text('2. Financial Overview', 14, currentY);
+
+    autoTable(pdf, {
+      startY: currentY + 5,
+      head: [['Financial Metric', 'Amount (LKR)']],
+      body: [
+        ['Total Collected Revenue', `Rs. ${paymentMetrics.totalIncome.toLocaleString()}`],
+        ['Pending / Outstanding', `Rs. ${paymentMetrics.pendingAmount.toLocaleString()}`],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [22, 163, 74], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [240, 253, 244] },
+      margin: { left: 14, right: 14 },
     });
 
-    // Schedules detail table
+    // 3. Schedules Detail (New Page if needed)
     if (scheduleMetrics.raw.length > 0) {
       pdf.addPage();
       pdf.setFontSize(14);
-      pdf.text('Schedule Details', 14, 22);
-      pdf.autoTable({
-        startY: 30,
-        head: [['ID', 'Date', 'Time', 'Instructor', 'Vehicle', 'Students', 'Status']],
+      pdf.setTextColor(...primaryColor);
+      pdf.setFont("helvetica", "bold");
+      pdf.text('3. Schedule Details (Recent 50)', 14, 20);
+      
+      autoTable(pdf, {
+        startY: 25,
+        head: [['Date', 'Time', 'Instructor', 'Vehicle', 'Status']],
         body: scheduleMetrics.raw.slice(0, 50).map(s => [
-          s.id, s.date, s.timeSlotLabel || '', s.instructorName || '', s.vehicleName || '',
-          String(s.students?.length || 0), s.status
+          s.date, s.timeSlotLabel || s.time || '', s.instructorName || '', s.vehicleName || s.vehicle || '', s.status
         ]),
         theme: 'striped',
-        headStyles: { fillColor: [11, 37, 69] },
-        styles: { fontSize: 8 },
+        headStyles: { fillColor: primaryColor },
+        styles: { fontSize: 9 },
       });
     }
 
-    pdf.save('driving-school-report.pdf');
+    // 4. Payments Detail (New Page if needed)
+    if (paymentMetrics.raw.length > 0) {
+      pdf.addPage();
+      pdf.setFontSize(14);
+      pdf.setTextColor(...primaryColor);
+      pdf.setFont("helvetica", "bold");
+      pdf.text('4. Recent Financial Transactions', 14, 20);
+      
+      autoTable(pdf, {
+        startY: 25,
+        head: [['Date', 'Student', 'Amount (Rs)', 'Method', 'Status']],
+        body: paymentMetrics.raw.slice(0, 50).map(p => [
+          p.createdAt ? p.createdAt.split('T')[0] : p.date || '-', 
+          p.studentName || 'Unknown', 
+          p.amount ? Number(p.amount).toLocaleString() : '0', 
+          p.method || p.paymentMethod || 'Cash', 
+          p.status || 'completed'
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [22, 163, 74] },
+        styles: { fontSize: 9 },
+      });
+    }
+
+    // Add page numbers
+    const pageCount = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(8);
+      pdf.setTextColor(150);
+      pdf.text(`Page ${i} of ${pageCount} - Eranga Driving School`, 14, pdf.internal.pageSize.height - 10);
+    }
+
+    pdf.save('Eranga_Professional_Report.pdf');
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      alert('Failed to generate PDF. Please try again.');
+    }
   }, [studentMetrics, instructorMetrics, vehicleMetrics, scheduleMetrics, paymentMetrics]);
 
   // ── Export to Excel ──
-  const handleExportExcel = useCallback(async () => {
-    const XLSX = await import('xlsx');
-    const wb = XLSX.utils.book_new();
+  const handleExportExcel = useCallback(() => {
+    try {
+      const wb = XLSX.utils.book_new();
 
-    // KPI Sheet
+    // Utility to auto-size columns
+    const autoSize = (data) => {
+      if (!data || data.length === 0) return [];
+      const keys = Object.keys(data[0]);
+      return keys.map(key => ({ wch: Math.max(key.length + 5, 15) }));
+    };
+
+    // 1. KPI Sheet
     const kpiData = [
       { Metric: 'Total Students', Value: studentMetrics.total },
       { Metric: 'Active Students', Value: studentMetrics.active },
@@ -184,31 +268,76 @@ export default function AdminReports() {
       { Metric: 'Active Vehicles', Value: vehicleMetrics.active },
       { Metric: 'Total Sessions', Value: scheduleMetrics.total },
       { Metric: 'Completed Sessions', Value: scheduleMetrics.completed },
-      { Metric: 'Total Revenue', Value: paymentMetrics.totalIncome },
-      { Metric: 'Pending Payments', Value: paymentMetrics.pendingAmount },
+      { Metric: 'Total Revenue (Rs)', Value: paymentMetrics.totalIncome },
+      { Metric: 'Pending Payments (Rs)', Value: paymentMetrics.pendingAmount },
     ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiData), 'Summary');
+    const wsKpi = XLSX.utils.json_to_sheet(kpiData);
+    wsKpi['!cols'] = [{ wch: 30 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsKpi, 'Summary');
 
-    // Schedules Sheet
-    if (scheduleMetrics.raw.length > 0) {
-      const schedData = scheduleMetrics.raw.map(s => ({
-        ID: s.id, Date: s.date, Time: s.timeSlotLabel || '',
-        Instructor: s.instructorName || '', Vehicle: s.vehicleName || '',
-        Students: s.students?.length || 0, Status: s.status
+    // 2. Students Sheet
+    if (studentMetrics.raw.length > 0) {
+      const stuData = studentMetrics.raw.map(s => ({
+        ID: s.id, Name: s.name, Phone: s.phone, NIC: s.nic,
+        Status: s.status, Package: s.packageName || s.enrolledPackage || 'None',
+        Progress: s.progressLevel || 'Beginner'
       }));
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(schedData), 'Schedules');
+      const wsStu = XLSX.utils.json_to_sheet(stuData);
+      wsStu['!cols'] = autoSize(stuData);
+      XLSX.utils.book_append_sheet(wb, wsStu, 'Students');
     }
 
-    // Vehicles Sheet
+    // 3. Instructors Sheet
+    if (instructorMetrics.raw.length > 0) {
+      const instData = instructorMetrics.raw.map(i => ({
+        ID: i.id, Name: i.name, Phone: i.phone, NIC: i.nic,
+        Status: i.status, Experience: i.experienceYears || '0'
+      }));
+      const wsInst = XLSX.utils.json_to_sheet(instData);
+      wsInst['!cols'] = autoSize(instData);
+      XLSX.utils.book_append_sheet(wb, wsInst, 'Instructors');
+    }
+
+    // 4. Vehicles Sheet
     if (vehicleMetrics.raw.length > 0) {
       const vehData = vehicleMetrics.raw.map(v => ({
-        ID: v.id, Name: v.name || '', NumberPlate: v.numberPlate || '',
-        Type: v.type || '', Status: v.status || ''
+        ID: v.id, Name: v.name || '', Category: v.category || '',
+        Price: v.price || '', Status: v.status || 'active'
       }));
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vehData), 'Vehicles');
+      const wsVeh = XLSX.utils.json_to_sheet(vehData);
+      wsVeh['!cols'] = autoSize(vehData);
+      XLSX.utils.book_append_sheet(wb, wsVeh, 'Vehicles');
     }
 
-    XLSX.writeFile(wb, 'driving-school-report.xlsx');
+    // 5. Schedules Sheet
+    if (scheduleMetrics.raw.length > 0) {
+      const schedData = scheduleMetrics.raw.map(s => ({
+        ID: s.id, Date: s.date, Time: s.timeSlotLabel || s.time || '',
+        Instructor: s.instructorName || '', Vehicle: s.vehicleName || s.vehicle || '',
+        Status: s.status
+      }));
+      const wsSched = XLSX.utils.json_to_sheet(schedData);
+      wsSched['!cols'] = autoSize(schedData);
+      XLSX.utils.book_append_sheet(wb, wsSched, 'Schedules');
+    }
+
+    // 6. Payments Sheet
+    if (paymentMetrics.raw.length > 0) {
+      const payData = paymentMetrics.raw.map(p => ({
+        ID: p.id, Date: p.createdAt ? p.createdAt.split('T')[0] : p.date || '-',
+        Student: p.studentName || 'Unknown', Amount: p.amount || 0,
+        Method: p.method || p.paymentMethod || 'Cash', Status: p.status || 'completed'
+      }));
+      const wsPay = XLSX.utils.json_to_sheet(payData);
+      wsPay['!cols'] = autoSize(payData);
+      XLSX.utils.book_append_sheet(wb, wsPay, 'Payments');
+    }
+
+    XLSX.writeFile(wb, 'Eranga_Professional_Report.xlsx');
+    } catch (err) {
+      console.error('Excel generation failed:', err);
+      alert('Failed to generate Excel. Please try again.');
+    }
   }, [studentMetrics, instructorMetrics, vehicleMetrics, scheduleMetrics, paymentMetrics]);
 
   // ── Clear Filters ──

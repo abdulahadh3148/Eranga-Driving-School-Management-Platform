@@ -1,0 +1,243 @@
+' Eranga Driving School Management Platform - DFDs
+' Data stores represent Firestore collections used by the application.
+
+@startuml DFD_Level_0_Context
+left to right direction
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #eaf2f8
+  BorderColor #2874a6
+}
+skinparam rectangle<<system>> {
+  BackgroundColor #d5f5e3
+  BorderColor #1e8449
+}
+skinparam database {
+  BackgroundColor #fef9e7
+  BorderColor #b7950b
+}
+
+rectangle "Student\n(Learner)" as Student
+rectangle "Instructor" as Instructor
+rectangle "Admin\n(Office Manager)" as Admin
+rectangle "Payment Sandbox" as Payment
+rectangle "Eranga Driving School\nManagement Platform" as System <<system>>
+
+Student --> System : registration, profile data,\ndocuments, package selection,\nbooking requests, payments
+System --> Student : approval status, package details,\nbooking confirmation, invoices,\nprogress and notifications
+
+Instructor --> System : availability, session updates,\nskill evaluations, attendance
+System --> Instructor : assigned schedule,\nstudent progress, session details
+
+Admin --> System : approvals, package/fleet data,\ninstructor assignments, payment entries
+System --> Admin : dashboards, alerts, schedules,\nreports and audit information
+
+System --> Payment : payment request
+Payment --> System : payment result / reference
+
+note bottom of System
+  The system boundary contains authentication,
+  scheduling, progress, payment, reporting,
+  and notification processes.
+end note
+@enduml
+
+@startuml DFD_Level_1_Main
+left to right direction
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #eaf2f8
+  BorderColor #2874a6
+}
+skinparam circle {
+  BackgroundColor #d5f5e3
+  BorderColor #1e8449
+}
+skinparam database {
+  BackgroundColor #fef9e7
+  BorderColor #b7950b
+}
+
+rectangle "Student" as Student
+rectangle "Instructor" as Instructor
+rectangle "Admin" as Admin
+rectangle "Payment Sandbox" as Gateway
+
+circle "1.0\nAuthenticate &\nManage Users" as P1
+circle "2.0\nManage DMT Progress\n& Documents" as P2
+circle "3.0\nManage Packages\n& Enrollment" as P3
+circle "4.0\nManage Booking\n& Schedule" as P4
+circle "5.0\nManage Training Session\n& Progress" as P5
+circle "6.0\nManage Payments\n& Invoices" as P6
+circle "7.0\nManage Notifications\n& Reports" as P7
+
+database "D1 Users" as D1
+database "D2 Documents\n& DMT Progress" as D2
+database "D3 Packages\n& Enrollments" as D3
+database "D4 Bookings\n& Sessions" as D4
+database "D5 Instructors\n& Availability" as D5
+database "D6 Vehicles" as D6
+database "D7 Payments\n& Invoices" as D7
+database "D8 Notifications" as D8
+
+Student --> P1 : registration / login / profile
+P1 --> Student : authentication result / role
+P1 <--> D1 : user account and role data
+Instructor --> P1 : login / profile update
+Instructor <-- P1 : authentication result
+Admin --> P1 : login / user status update
+Admin <-- P1 : access result
+
+Student --> P2 : medical certificate /\nlearner permit upload
+P2 --> Student : verification status /\nDMT step status
+Admin --> P2 : verify or reject documents,\nupdate progress step
+P2 --> Admin : pending documents / progress data
+P2 <--> D1 : student status
+P2 <--> D2 : documents and DMT progress
+
+Student --> P3 : browse packages / enroll
+P3 --> Student : package list / enrollment result
+Admin --> P3 : create or update package
+P3 --> Admin : enrollment summary
+P3 <--> D3 : packages and enrollments
+P3 --> P6 : enrollment fee details
+
+Student --> P4 : preferred date, slot,\ninstructor and vehicle
+P4 --> Student : booking status / confirmation
+Instructor --> P4 : availability slots
+P4 --> Instructor : assigned schedule
+Admin --> P4 : approve, assign or reschedule booking
+P4 --> Admin : booking conflicts / schedule status
+P4 <--> D4 : bookings and scheduled sessions
+P4 <--> D5 : instructor availability
+P4 <--> D6 : vehicle availability
+P4 --> P2 : check learner permit status
+P2 --> P4 : eligibility result
+P4 --> P6 : check outstanding balance
+P6 --> P4 : payment clearance / booking block
+
+Instructor --> P5 : start session, attendance,\nskill checklist and completion
+P5 --> Instructor : active session and student details
+Student --> P5 : view session and progress
+P5 --> Student : completed classes and skill progress
+P5 <--> D4 : session status and attendance
+P5 <--> D2 : DMT/practical progress
+P5 <--> D3 : completed classes and skills
+Instructor --> D5 : availability update
+D5 --> P5 : instructor schedule
+
+Student --> P6 : installment payment / payment reference
+Admin --> P6 : offline cash payment / approval
+P6 --> Gateway : sandbox payment request
+Gateway --> P6 : payment result
+P6 --> Student : receipt / invoice / balance
+P6 --> Admin : payment audit / outstanding balances
+P6 <--> D7 : payments and invoices
+P6 --> D3 : enrollment payment status
+
+P7 <--> D1 : user and student summaries
+P7 <--> D3 : enrollment and package summaries
+P7 <--> D4 : lesson and booking summaries
+P7 <--> D6 : fleet availability
+P7 <--> D7 : revenue and payment data
+P7 <--> D8 : notification records
+P7 --> Student : booking, payment and progress alerts
+P7 --> Instructor : schedule and session alerts
+P7 --> Admin : KPIs, reports and system alerts
+
+note right of P4
+  Booking is accepted only if:
+  - learner permit is approved
+  - instructor is available
+  - vehicle is available
+  - outstanding fees are within limit
+end note
+@enduml
+
+@startuml DFD_Level_2_Booking_and_Session
+left to right direction
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #eaf2f8
+  BorderColor #2874a6
+}
+skinparam circle {
+  BackgroundColor #d5f5e3
+  BorderColor #1e8449
+}
+skinparam database {
+  BackgroundColor #fef9e7
+  BorderColor #b7950b
+}
+
+rectangle "Student" as Student
+rectangle "Instructor" as Instructor
+rectangle "Admin" as Admin
+
+database "D2 DMT Progress\n& Documents" as D2
+database "D4 Bookings\n& Sessions" as D4
+database "D5 Instructor\nAvailability" as D5
+database "D6 Vehicles" as D6
+database "D7 Payments\n& Invoices" as D7
+
+circle "4.1\nReceive Booking\nRequest" as P41
+circle "4.2\nValidate Student\nEligibility" as P42
+circle "4.3\nCheck Instructor\n& Vehicle Conflicts" as P43
+circle "4.4\nCreate / Update\nBooking" as P44
+circle "4.5\nApprove & Assign\nSession" as P45
+circle "5.1\nStart Active\nSession" as P51
+circle "5.2\nRecord Attendance\n& Skills" as P52
+circle "5.3\nComplete Session\n& Update Progress" as P53
+
+Student --> P41 : date, time slot,\ninstructor, vehicle preference
+P41 --> P42 : booking details
+P42 <--> D2 : learner permit and DMT status
+P42 <--> D7 : outstanding balance
+P42 --> Student : rejection reason /\neligibility result
+P42 --> P43 : eligible booking
+
+P43 <--> D5 : instructor availability
+P43 <--> D6 : vehicle availability
+P43 <--> D4 : existing bookings and sessions
+P43 --> Student : conflict message /\navailable alternatives
+P43 --> P44 : conflict-free request
+
+P44 --> D4 : pending booking
+P44 --> Admin : pending request for approval
+Admin --> P45 : approval, instructor and\nvehicle assignment
+P45 <--> D4 : scheduled session
+P45 --> Student : booking confirmation
+P45 --> Instructor : assigned session
+
+Instructor --> P51 : start session
+P51 <--> D4 : session start time and status
+P51 --> Instructor : active timer / session details
+
+Instructor --> P52 : attendance, skill checklist, notes
+P52 --> D4 : attendance and session log
+P52 --> D2 : practical training progress
+P52 --> Instructor : saved progress result
+
+Instructor --> P53 : complete session
+P53 <--> D4 : completed session
+P53 <--> D2 : DMT progress update
+P53 --> Student : completed class, skills and progress
+P53 --> Admin : session completion summary
+
+note bottom of P42
+  This process enforces the business rule that
+  a student cannot book practical training before
+  the learner permit is verified.
+end note
+@enduml
+
+@startuml DFD_Legend
+left to right direction
+skinparam shadowing false
+rectangle "External Entity\n(Student / Instructor / Admin)" as E
+circle "Process\n(Transforms data)" as P
+database "Data Store\n(Firestore collection)" as D
+E --> P : Data flow
+P --> D : Store / retrieve data
+D --> P : Read data
+@enduml

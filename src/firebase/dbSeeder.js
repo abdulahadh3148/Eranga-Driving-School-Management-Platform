@@ -189,10 +189,16 @@ export async function seedDatabaseIfNeeded() {
         batch.set(doc(db, 'counters', prefix), data);
       });
 
-      // 2. Users (Students + Instructors)
-      [...SEED_STUDENTS, ...SEED_INSTRUCTORS].forEach((user) => {
-        const { id, ...data } = user;
-        batch.set(doc(db, 'users', id), data);
+      // 2. Students
+      SEED_STUDENTS.forEach((student) => {
+        const { id, ...data } = student;
+        batch.set(doc(db, 'students', id), data);
+      });
+
+      // 3. Instructors
+      SEED_INSTRUCTORS.forEach((inst) => {
+        const { id, ...data } = inst;
+        batch.set(doc(db, 'instructors', id), data);
       });
 
       // 3. Vehicles

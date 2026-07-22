@@ -17,6 +17,7 @@ export default function Availability() {
   ];
 
   const [availability, setAvailability] = useState({});
+  const [autoAssignEnabled, setAutoAssignEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(false);
@@ -27,8 +28,14 @@ export default function Availability() {
     const fetchAvailability = async () => {
       try {
         const docSnap = await getDoc(doc(db, 'instructors', userProfile.id));
-        if (docSnap.exists() && docSnap.data().availability) {
-          setAvailability(docSnap.data().availability);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.availability) {
+            setAvailability(data.availability);
+          }
+          if (data.autoAssignEnabled !== undefined) {
+            setAutoAssignEnabled(data.autoAssignEnabled);
+          }
         } else {
           // Initialize with some default availability
           const initial = {};
@@ -60,7 +67,10 @@ export default function Availability() {
     if (!userProfile?.id) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'instructors', userProfile.id), { availability });
+      await updateDoc(doc(db, 'instructors', userProfile.id), { 
+        availability,
+        autoAssignEnabled
+      });
       setToast(true);
       setTimeout(() => setToast(false), 3000);
     } catch (err) {
@@ -84,6 +94,24 @@ export default function Availability() {
       <div className="availability-info-banner">
         <Clock size={20} className="availability-info-icon" />
         <span>Students will only be able to book lessons during the time slots you enable below. Unchecked slots are blocked.</span>
+      </div>
+
+      {/* Auto Assign Settings */}
+      <div className="availability-info-banner" style={{ marginTop: '20px', background: '#fff', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}>
+        <div>
+          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#0B2545', margin: '0 0 4px 0' }}>Auto-Assign Students</h3>
+          <p style={{ fontSize: '13px', color: '#64748b', margin: 0, lineHeight: 1.4 }}>
+            Allow the system to automatically assign you to new students when their L-Permits are approved.
+          </p>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+          <input 
+            type="checkbox" 
+            checked={autoAssignEnabled} 
+            onChange={(e) => setAutoAssignEnabled(e.target.checked)}
+            style={{ width: '22px', height: '22px', cursor: 'pointer', accentColor: '#0B2545' }}
+          />
+        </label>
       </div>
 
       {/* Day Blocks */}

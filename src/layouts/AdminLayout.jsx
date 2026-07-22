@@ -1,28 +1,46 @@
 import { Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, GraduationCap, UserCheck, UserPlus,
-  Users, Car, Package, CalendarDays, CreditCard,
-  BarChart3, Bell, Settings, CalendarClock, CheckCircle
+  Users, Car, Package, CalendarDays, CreditCard, Home,
+  BarChart3, Bell, Settings, CalendarClock, CheckCircle, FileText, ShieldAlert, ClipboardList, Database
 } from 'lucide-react';
 import Sidebar from '../components/ui/Sidebar';
 import { useAuth } from '../context/AuthContext';
+import NotificationBell from '../components/ui/NotificationBell';
 
 const adminNavItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
-  { icon: GraduationCap, label: 'All Students', path: '/admin/students' },
-  { icon: UserCheck, label: 'Pending Students', path: '/admin/pending-students' },
-  { icon: UserPlus, label: 'Approved Students', path: '/admin/approved-students' },
-  { icon: Users, label: 'Instructors', path: '/admin/instructors' },
-  { icon: Users, label: 'Batches', path: '/admin/batches' },
-  { icon: CheckCircle, label: 'Attendance', path: '/admin/attendance' },
-  { icon: Car, label: 'Vehicles', path: '/admin/vehicles' },
-  { icon: Package, label: 'Packages', path: '/admin/packages' },
-  { icon: CalendarDays, label: 'Bookings', path: '/admin/bookings' },
-  { icon: CalendarClock, label: 'Scheduling', path: '/admin/scheduling' },
+  { icon: ShieldAlert, label: 'Approvals', path: '/admin/approvals' },
+  { 
+    icon: GraduationCap, label: 'Students', 
+    children: [
+      { icon: GraduationCap, label: 'All Students', path: '/admin/students' },
+      { icon: UserPlus, label: 'Approved Students', path: '/admin/approved-students' },
+      { icon: CheckCircle, label: 'Past Students', path: '/admin/past-students' },
+    ]
+  },
+  { 
+    icon: CalendarClock, label: 'Schedule', 
+    children: [
+      { icon: CalendarClock, label: 'Master Schedule', path: '/admin/scheduling' },
+      { icon: CalendarDays, label: 'Bookings', path: '/admin/bookings' },
+      { icon: CalendarDays, label: 'Trial Exams', path: '/admin/trial-exams' },
+    ]
+  },
   { icon: CreditCard, label: 'Payments', path: '/admin/payments' },
-  { icon: BarChart3, label: 'Report', path: '/admin/reports' },
+  { 
+    icon: ClipboardList, label: 'Management', 
+    children: [
+      { icon: Users, label: 'Instructors', path: '/admin/instructors' },
+      { icon: Car, label: 'Vehicles', path: '/admin/vehicles' },
+      { icon: Package, label: 'Packages', path: '/admin/packages' },
+      { icon: Home, label: 'Home Page', path: '/admin/homepage' },
+    ]
+  },
+  { icon: BarChart3, label: 'Reports', path: '/admin/reports' },
   { icon: Bell, label: 'Notifications', path: '/admin/notifications' },
   { icon: Settings, label: 'Settings', path: '/admin/settings' },
+  { icon: Database, label: 'DB Tools', path: '/admin/db-tools' },
 ];
 
 export default function AdminLayout() {
@@ -35,13 +53,7 @@ export default function AdminLayout() {
         <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between lg:justify-end">
           <div className="lg:hidden w-8" />
           <div className="flex items-center gap-6">
-            <button 
-              onClick={() => window.location.href = '/admin/notifications'}
-              className="relative p-2 text-gray-400 hover:text-primary transition-colors"
-            >
-              <Bell size={20} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-            </button>
+            <NotificationBell userId="admin" />
             <div className="h-8 w-px bg-gray-200 hidden sm:block"></div>
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">

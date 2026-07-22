@@ -1,0 +1,505 @@
+@startuml
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam linetype ortho
+skinparam noteBackgroundColor #fdf6e3
+
+package "Identity & Access" {
+  abstract class User {
+    - id: String
+    - authUid: String
+    - name: String
+    - email: String
+    - phone: String
+    - role: Role
+    - status: AccountStatus
+    - createdAt: DateTime
+    + authenticate(): Boolean
+    + logout(): void
+    + updateProfile(): void
+    + isApproved(): Boolean
+  }
+
+  class Student {
+    - nic: String
+    - dob: Date
+    - gender: String
+    - address: String
+    - district: String
+    - vehicleType: VehicleType
+    - currentStep: DmtStep
+    - testReady: Boolean
+    + submitRegistration(): void
+    + uploadDocument(): void
+    + enrollInPackage(): void
+    + requestBooking(): Booking
+    + makePayment(): Payment
+    + viewProgress(): DmtProgress
+  }
+
+  class Instructor {
+    - instructorId: String
+    - nic: String
+    - vehicleTypes: List<VehicleType>
+    - status: AccountStatus
+    + setAvailability(): void
+    + viewSchedule(): List<TrainingSession>
+    + startSession(): void
+    + completeSession(): void
+    + recordAttendance(): void
+    + evaluatePerformance(): void
+  }
+
+  class Admin {
+    - adminId: String
+    - permissions: List<Permission>
+    + approveStudent(): void
+    + verifyDocument(): void
+    + assignInstructor(): void
+    + assignVehicle(): void
+    + approveBooking(): void
+    + managePackage(): void
+    + generateReport(): void
+  }
+
+  User <|-- Student
+  User <|-- Instructor
+  User <|-- Admin
+}
+
+package "Enrollment & Progress" {
+  class TrainingPackage {
+    - packageId: String
+    - name: String
+    - price: Decimal
+    - duration: String
+    - vehicleType: VehicleType
+    - includedSessions: Integer
+    - isActive: Boolean
+    + calculateFee(): Decimal
+    + activate(): void
+    + deactivate(): void
+    + updateDetails(): void
+  }
+
+  class Enrollment {
+    - enrollmentId: String
+    - enrolledAt: DateTime
+    - totalClasses: Integer
+    - completedClasses: Integer
+    - paymentStatus: PaymentStatus
+    - status: EnrollmentStatus
+    + calculateOutstandingBalance(): Decimal
+    + recordPayment(): void
+    + completeClass(): void
+    + updateSkill(): void
+    + completeEnrollment(): void
+  }
+
+  class SkillProgress {
+    - name: String
+    - level: Integer
+    - done: Boolean
+    + increaseLevel(): void
+    + markCompleted(): void
+  }
+
+  class DmtProgress {
+    - progressId: String
+    - currentStep: DmtStep
+    - percentage: Integer
+    - medicalStatus: DocumentStatus
+    - applicationStatus: DocumentStatus
+    - theoryExamStatus: ExamStatus
+    - learnerPermitStatus: DocumentStatus
+    - practicalTrainingStatus: TrainingStatus
+    - practicalTestStatus: ExamStatus
+    - licenseStatus: LicenseStatus
+    + advanceTo(step: DmtStep): void
+    + getNextStep(): DmtStep
+    + canBookPracticalLesson(): Boolean
+    + calculatePercentage(): Integer
+  }
+
+  abstract class Document {
+    - documentId: String
+    - documentType: DocumentType
+    - storageUrl: String
+    - uploadedAt: DateTime
+    - verifiedAt: DateTime
+    - verifiedBy: String
+    - status: DocumentStatus
+    + upload(): void
+    + verify(): void
+    + reject(): void
+    + replace(): void
+  }
+
+  class MedicalCertificate
+  class LearnerPermitDocument
+  Document <|-- MedicalCertificate
+  Document <|-- LearnerPermitDocument
+}
+
+package "Scheduling & Fleet" {
+  class Booking {
+    - bookingId: String
+    - date: Date
+    - bookingType: BookingType
+    - vehicleType: VehicleType
+    - status: BookingStatus
+    - createdAt: DateTime
+    + submit(): void
+    + validateEligibility(): Boolean
+    + approve(): void
+    + reject(): void
+    + cancel(): void
+    + reschedule(): void
+  }
+
+  class TrainingSession {
+    - sessionId: String
+    - date: Date
+    - time: String
+    - status: SessionStatus
+    - startedAt: DateTime
+    - completedAt: DateTime
+    + start(): void
+    + complete(): void
+    + cancel(): void
+    + isAvailable(): Boolean
+    + recordAttendance(): void
+  }
+
+  class TimeSlot {
+    - slotId: String
+    - label: String
+    - startTime: Time
+    - endTime: Time
+    + overlaps(other: TimeSlot): Boolean
+  }
+
+  class AvailabilitySlot {
+    - availabilityId: String
+    - dayOfWeek: DayOfWeek
+    - isAvailable: Boolean
+    + open(): void
+    + close(): void
+    + overlaps(date: Date, slot: TimeSlot): Boolean
+  }
+
+  class Vehicle {
+    - vehicleId: String
+    - registrationNumber: String
+    - name: String
+    - type: VehicleType
+    - fuelType: FuelType
+    - transmission: TransmissionType
+    - status: VehicleStatus
+    - maintenanceStatus: String
+    + isAvailable(): Boolean
+    + assignToSession(): void
+    + markUnderService(): void
+    + markActive(): void
+  }
+}
+
+package "Assessment & Finance" {
+  class SessionProgress {
+    - progressId: String
+    - date: Date
+    - attendance: AttendanceStatus
+    - performance: PerformanceLevel
+    - notes: String
+    + recordAttendance(): void
+    + evaluateSkill(): void
+    + calculatePerformance(): Decimal
+    + updateEnrollmentProgress(): void
+  }
+
+  class TrialExam {
+    - resultId: String
+    - examType: ExamType
+    - examDate: Date
+    - score: Decimal
+    - result: ExamResult
+    - remarks: String
+    + schedule(): void
+    + recordResult(): void
+    + pass(): void
+    + fail(): void
+  }
+
+  class Payment {
+    - paymentId: String
+    - amount: Decimal
+    - type: PaymentType
+    - method: PaymentMethod
+    - reference: String
+    - status: PaymentStatus
+    - paymentDate: DateTime
+    + submit(): void
+    + approve(): void
+    + reject(): void
+    + generateReceipt(): String
+  }
+
+  class Invoice {
+    - invoiceId: String
+    - invoiceNumber: String
+    - amount: Decimal
+    - issuedAt: DateTime
+    - status: InvoiceStatus
+    + generate(): void
+    + print(): void
+    + email(): void
+  }
+}
+
+package "Communication" {
+  class Notification {
+    - notificationId: String
+    - title: String
+    - message: String
+    - type: NotificationType
+    - link: String
+    - read: Boolean
+    - createdAt: DateTime
+    + send(): void
+    + markAsRead(): void
+    + markAsUnread(): void
+    + delete(): void
+  }
+}
+
+Student "1" *-- "1" DmtProgress
+Student "1" -- "0..*" Document
+Student "1" -- "0..*" Enrollment
+TrainingPackage "1" -- "0..*" Enrollment
+Enrollment "1" *-- "0..*" SkillProgress
+Enrollment "1" -- "0..*" Payment
+Payment "1" --> "0..1" Invoice
+
+Student "1" -- "0..*" Booking
+Instructor "0..1" -- "0..*" Booking
+Vehicle "0..1" -- "0..*" Booking
+Booking "1" --> "0..1" TrainingSession
+TrainingSession "1" -- "1" Student
+TrainingSession "1" -- "1" Instructor
+TrainingSession "1" -- "1" Vehicle
+TrainingSession "1" *-- "0..1" SessionProgress
+Instructor "1" -- "0..*" AvailabilitySlot
+AvailabilitySlot "1" *-- "1" TimeSlot
+TrainingSession "1" -- "1" TimeSlot
+
+Student "1" -- "0..*" SessionProgress
+Instructor "1" -- "0..*" SessionProgress
+Student "1" -- "0..*" TrialExam
+Student "1" -- "0..*" Payment
+Student "1" -- "0..*" Notification
+
+Admin ..> Document : verifies
+Admin ..> Booking : approves / assigns
+Admin ..> Payment : approves
+Admin ..> Vehicle : manages
+
+note right of Booking
+  Booking is eligible only when:
+  1. Learner permit is approved
+  2. Instructor is assigned
+  3. Fees are not blocking
+  4. Instructor and vehicle are free
+end note
+
+note bottom of TrainingSession
+  Current application workflow uses one student per session.
+end note
+
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+}
+
+enum Permission {
+  MANAGE_USERS
+  MANAGE_BOOKINGS
+  MANAGE_PAYMENTS
+  MANAGE_FLEET
+  VIEW_REPORTS
+}
+
+enum AccountStatus {
+  PENDING
+  APPROVED
+  ACTIVE
+  REJECTED
+  INACTIVE
+}
+
+enum BookingStatus {
+  PENDING
+  PENDING_PAYMENT_APPROVAL
+  ASSIGNED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum VehicleStatus {
+  ACTIVE
+  UNDER_SERVICE
+  INACTIVE
+}
+
+enum VehicleType {
+  CAR
+  VAN
+  BIKE
+  THREE_WHEELER
+  HEAVY
+}
+
+enum TransmissionType {
+  MANUAL
+  AUTOMATIC
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DocumentType {
+  MEDICAL_CERTIFICATE
+  LEARNER_PERMIT
+}
+
+enum DmtStep {
+  MEDICAL_CERTIFICATE
+  DMT_APPLICATION
+  THEORY_EXAMINATION
+  LEARNER_PERMIT
+  PRACTICAL_TRAINING
+  PRACTICAL_ROAD_TEST
+  FINAL_DRIVING_LICENSE
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum BookingType {
+  PRACTICAL_LESSON
+  ROAD_TEST
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+enum ExamStatus {
+  PENDING
+  PASSED
+  FAILED
+}
+
+enum ExamResult {
+  PASS
+  FAIL
+  PENDING
+}
+
+enum ExamType {
+  THEORY
+  PRACTICAL
+  MOCK_TEST
+  TRIAL_EXAM
+}
+
+enum TrainingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum LicenseStatus {
+  NOT_ELIGIBLE
+  PENDING
+  ISSUED
+}
+
+enum PaymentType {
+  PACKAGE
+  INSTALLMENT
+  LESSON
+  OTHER
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  ONLINE
+  BANK_TRANSFER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  CANCELLED
+}
+
+enum NotificationType {
+  BOOKING
+  PAYMENT
+  DOCUMENT
+  SYSTEM
+}
+
+enum PerformanceLevel {
+  BEGINNER
+  DEVELOPING
+  COMPETENT
+  EXCELLENT
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum FuelType {
+  PETROL
+  DIESEL
+  ELECTRIC
+  HYBRID
+}
+
+@enduml

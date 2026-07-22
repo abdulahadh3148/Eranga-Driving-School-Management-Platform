@@ -1,214 +1,240 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { db, storage } from '../../firebase/config';
+import { auth, db, storage } from '../../firebase/config';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, updateDoc, collection, addDoc, writeBatch } from 'firebase/firestore';
+import { doc, updateDoc, writeBatch, collection } from 'firebase/firestore';
 import { CATEGORIES, getPackagesByCategory, formatPrice } from '../../data/packages';
-import { generateStudentSchedule } from '../../utils/autoSchedule';
+import { generateSkills } from '../../utils/skillGenerator';
+import { Car, Truck, CheckCircle2, FileImage, UploadCloud, FileText, CheckSquare, Square } from 'lucide-react';
+
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
 const ALLOWED_LABELS = 'PDF, JPG, or PNG';
-const MAX_IMAGE_DIM = 1200; // px – resize to this longest edge before upload
-const JPEG_QUALITY = 0.75;
 
-// ── Image compressor ─────────────────────────────────────────────────────────
-function compressImage(file) {
-  return new Promise((resolve) => {
-    // Skip PDFs – only compress images
-    if (file.type === 'application/pdf') { resolve(file); return; }
-
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-
-      let { width, height } = img;
-      // Only downscale, never upscale
-      if (width > MAX_IMAGE_DIM || height > MAX_IMAGE_DIM) {
-        const ratio = Math.min(MAX_IMAGE_DIM / width, MAX_IMAGE_DIM / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
-
-      canvas.toBlob(
-        (blob) => {
-          const compressed = new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() });
-          resolve(compressed);
-        },
-        'image/jpeg',
-        JPEG_QUALITY
-      );
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); }; // fallback
-    img.src = url;
-  });
-}
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 const css = {
   wrapper: {
     minHeight: '100vh',
-    background: '#F1F4F9',
+    background: 'linear-gradient(135deg, #f6f8fd 0%, #e2e8f0 100%)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '20px',
+    padding: '40px 20px',
     fontFamily: 'var(--font-body)',
   },
   card: {
     background: '#ffffff',
-    borderRadius: '16px',
-    padding: '40px',
+    borderRadius: '24px',
+    padding: '48px',
     width: '100%',
-    maxWidth: '600px',
-    boxShadow: '0 10px 30px rgba(11, 37, 69, 0.08)',
+    maxWidth: '680px',
+    boxShadow: '0 25px 50px -12px rgba(11, 37, 69, 0.15)',
+    border: '1px solid rgba(255, 255, 255, 0.6)',
+    position: 'relative',
+    overflow: 'hidden',
   },
   header: {
     textAlign: 'center',
-    marginBottom: '32px',
+    marginBottom: '40px',
   },
   title: {
-    fontSize: '24px',
+    fontSize: '32px',
     fontWeight: '900',
-    color: '#111c2d',
-    marginBottom: '8px',
+    color: '#0f172a',
+    letterSpacing: '-0.5px',
+    marginBottom: '12px',
   },
   subtitle: {
-    fontSize: '14px',
-    color: '#737686',
+    fontSize: '15px',
+    color: '#64748b',
+    fontWeight: '500',
   },
   stepIndicator: {
     display: 'flex',
     justifyContent: 'center',
-    gap: '8px',
-    marginBottom: '32px',
+    gap: '12px',
+    marginBottom: '40px',
   },
   dot: (active) => ({
-    width: active ? '24px' : '8px',
-    height: '8px',
-    borderRadius: '4px',
-    background: active ? '#0B2545' : '#dee2e6',
-    transition: 'all 0.3s',
+    width: active ? '36px' : '10px',
+    height: '10px',
+    borderRadius: '6px',
+    background: active ? '#2563eb' : '#e2e8f0',
+    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+    boxShadow: active ? '0 4px 12px rgba(37, 99, 235, 0.3)' : 'none',
   }),
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '16px',
+    gap: '20px',
     marginBottom: '24px',
   },
   optionBtn: (selected) => ({
-    background: selected ? '#e7eeff' : '#ffffff',
-    border: `2px solid ${selected ? '#0B2545' : '#dee2e6'}`,
-    borderRadius: '12px',
-    padding: '20px',
+    background: selected ? '#eff6ff' : '#ffffff',
+    border: `2px solid ${selected ? '#3b82f6' : '#f1f5f9'}`,
+    borderRadius: '16px',
+    padding: '24px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '12px',
+    gap: '16px',
     cursor: 'pointer',
-    transition: 'all 0.2s',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     textAlign: 'center',
+    boxShadow: selected ? '0 12px 24px rgba(59, 130, 246, 0.15)' : '0 4px 12px rgba(0,0,0,0.02)',
+    transform: selected ? 'translateY(-4px)' : 'translateY(0)',
   }),
-  icon: { fontSize: '32px' },
-  pkgTitle: { fontSize: '16px', fontWeight: '800', color: '#111c2d' },
-  pkgPrice: { fontSize: '14px', fontWeight: '700', color: '#0B2545' },
-  fileInputBox: (isDragOver) => ({
-    border: `2px dashed ${isDragOver ? '#0B2545' : '#dee2e6'}`,
-    borderRadius: '12px',
-    padding: '40px 20px',
-    textAlign: 'center',
-    background: isDragOver ? '#e7eeff' : '#f9fafb',
-    marginBottom: '16px',
+  optionBtnCat: (selected) => ({
+    background: selected ? '#eff6ff' : '#ffffff',
+    border: `2px solid ${selected ? '#3b82f6' : '#f1f5f9'}`,
+    borderRadius: '20px',
+    padding: '32px 24px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: '16px',
     cursor: 'pointer',
-    transition: 'all 0.2s',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    textAlign: 'left',
+    position: 'relative',
+    boxShadow: selected ? '0 12px 24px rgba(59, 130, 246, 0.15)' : '0 4px 12px rgba(0,0,0,0.02)',
+    transform: selected ? 'translateY(-4px)' : 'translateY(0)',
+  }),
+  catBadge: {
+    position: 'absolute',
+    top: '20px',
+    right: '20px',
+    background: '#2563eb',
+    color: 'white',
+    padding: '6px 12px',
+    borderRadius: '20px',
+    fontSize: '12px',
+    fontWeight: '800',
+    letterSpacing: '0.5px',
+    textTransform: 'uppercase',
+    boxShadow: '0 4px 10px rgba(37, 99, 235, 0.3)',
+  },
+  catDetails: {
+    fontSize: '13px',
+    color: '#64748b',
+    marginTop: '12px',
+    lineHeight: '1.6',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px'
+  },
+  catDetailItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    fontWeight: '500'
+  },
+  icon: { marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '64px', height: '64px', background: '#eff6ff', borderRadius: '16px' },
+  pkgTitle: { fontSize: '20px', fontWeight: '900', color: '#0f172a' },
+  pkgPrice: { fontSize: '15px', fontWeight: '800', color: '#2563eb' },
+  fileInputBox: (isDragOver) => ({
+    border: `2px dashed ${isDragOver ? '#3b82f6' : '#cbd5e1'}`,
+    borderRadius: '16px',
+    padding: '48px 24px',
+    textAlign: 'center',
+    background: isDragOver ? '#eff6ff' : '#f8fafc',
+    marginBottom: '20px',
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
   }),
   checkboxRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
-    padding: '16px',
-    background: '#f9fafb',
-    borderRadius: '8px',
+    gap: '14px',
+    padding: '20px',
+    background: '#f8fafc',
+    borderRadius: '12px',
     marginBottom: '24px',
+    border: '1px solid #e2e8f0',
+    transition: 'all 0.2s',
   },
   btnRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    marginTop: '32px',
+    marginTop: '40px',
+    paddingTop: '24px',
+    borderTop: '1px solid #f1f5f9',
   },
   backBtn: {
-    background: 'transparent',
-    border: '1px solid #dee2e6',
-    color: '#505f76',
-    padding: '12px 24px',
-    borderRadius: '8px',
-    fontSize: '14px',
+    background: '#f8fafc',
+    border: '1px solid #e2e8f0',
+    color: '#475569',
+    padding: '14px 28px',
+    borderRadius: '12px',
+    fontSize: '15px',
     fontWeight: '700',
     cursor: 'pointer',
+    transition: 'all 0.2s',
   },
   nextBtn: {
-    background: '#0B2545',
+    background: 'linear-gradient(to right, #2563eb, #1d4ed8)',
     border: 'none',
     color: '#ffffff',
-    padding: '12px 32px',
-    borderRadius: '8px',
-    fontSize: '14px',
+    padding: '14px 36px',
+    borderRadius: '12px',
+    fontSize: '15px',
     fontWeight: '700',
     cursor: 'pointer',
     marginLeft: 'auto',
+    transition: 'transform 0.2s, box-shadow 0.2s',
+    boxShadow: '0 10px 25px -5px rgba(37, 99, 235, 0.4)',
   },
   disabledBtn: {
     opacity: 0.5,
     cursor: 'not-allowed',
+    background: '#94a3b8',
+    boxShadow: 'none',
   },
   // ── Progress bar ─────────────────────────────
   progressWrapper: {
-    marginBottom: '20px',
+    marginBottom: '24px',
   },
   progressLabel: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '13px',
+    fontSize: '14px',
     fontWeight: '700',
-    color: '#0B2545',
-    marginBottom: '6px',
+    color: '#1e293b',
+    marginBottom: '8px',
   },
   progressTrack: {
-    height: '8px',
-    borderRadius: '4px',
-    background: '#e9ecef',
+    height: '10px',
+    borderRadius: '5px',
+    background: '#e2e8f0',
     overflow: 'hidden',
   },
   progressBar: (pct) => ({
     height: '100%',
     width: `${pct}%`,
-    borderRadius: '4px',
-    background: 'linear-gradient(90deg, #0B2545, #1a6bff)',
-    transition: 'width 0.3s ease',
+    borderRadius: '5px',
+    background: 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+    transition: 'width 0.4s ease-out',
   }),
   // ── File preview chip ────────────────────────
   fileChip: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '10px 16px',
-    background: '#e7eeff',
-    borderRadius: '8px',
-    marginBottom: '16px',
+    padding: '14px 20px',
+    background: '#eff6ff',
+    border: '1px solid #bfdbfe',
+    borderRadius: '12px',
+    marginBottom: '20px',
+    boxShadow: '0 4px 12px rgba(59, 130, 246, 0.05)',
   },
   fileChipName: {
-    fontSize: '13px',
+    fontSize: '14px',
     fontWeight: '700',
-    color: '#0B2545',
+    color: '#1e3a8a',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -216,29 +242,37 @@ const css = {
   },
   fileChipSize: {
     fontSize: '12px',
-    color: '#505f76',
+    color: '#60a5fa',
     fontWeight: '600',
+    marginTop: '2px',
   },
   removeBtn: {
-    background: 'none',
+    background: '#fee2e2',
     border: 'none',
-    fontSize: '18px',
+    width: '32px',
+    height: '32px',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '14px',
     cursor: 'pointer',
-    color: '#ba1a1a',
-    padding: '0 4px',
+    color: '#dc2626',
+    transition: 'all 0.2s',
   },
   successBanner: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
-    padding: '12px 16px',
-    background: '#ecfdf5',
+    gap: '12px',
+    padding: '16px 20px',
+    background: '#f0fdf4',
     border: '1px solid #a7f3d0',
-    borderRadius: '8px',
-    marginBottom: '16px',
-    fontSize: '13px',
+    borderRadius: '12px',
+    marginBottom: '20px',
+    fontSize: '14px',
     fontWeight: '700',
     color: '#065f46',
+    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.1)',
   },
 };
 
@@ -261,26 +295,21 @@ export default function SetupWizard() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedPackages, setSelectedPackages] = useState([]);
   const [medicalFile, setMedicalFile] = useState(null);
+  const [permitFile, setPermitFile] = useState(null);
   const [uploadLater, setUploadLater] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);    // 0-100
   const [uploadPhase, setUploadPhase] = useState('');          // '' | 'compressing' | 'uploading' | 'done'
   const [isDragOver, setIsDragOver] = useState(false);
+  const [hasPriorExperience, setHasPriorExperience] = useState(false);
+  
+  const basePrice = selectedPackages.reduce((sum, pkg) => sum + (pkg.price || 0), 0);
+  const totalPrice = hasPriorExperience ? Math.max(0, basePrice - 1000) : basePrice;
 
-  // Step 4 Form State
   const [formData, setFormData] = useState({
-    fullName: userProfile?.name || '',
-    address: '',
-    dob: '',
-    nic: '',
-    phone: '',
-    emergencyContact: '',
-    preferredTime: 'morning',
-    preferredDays: 'weekdays'
+    lPermitStatus: 'no'
   });
-
-  const totalPrice = selectedPackages.reduce((sum, pkg) => sum + pkg.price, 0);
 
   // ── File validation ──────────────────────────────────────────────────────
   const validateFile = useCallback((file) => {
@@ -309,21 +338,56 @@ export default function SetupWizard() {
   const onDragLeave = () => setIsDragOver(false);
   const onDrop = (e) => { e.preventDefault(); setIsDragOver(false); if (!uploadLater && e.dataTransfer.files[0]) handleFileSelect(e.dataTransfer.files[0]); };
 
-  // ── Upload with progress ─────────────────────────────────────────────────
-  const uploadFile = async (file) => {
-    const fileRef = ref(storage, `medical_certs/${userProfile.id}_${Date.now()}_${file.name}`);
-    
-    // We use a manual Promise race to timeout the upload if Firebase hangs
-    const uploadPromise = uploadBytes(fileRef, file).then(async (snapshot) => {
-      setUploadProgress(100);
-      return await getDownloadURL(snapshot.ref);
-    });
+  const compressImageToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const max_size = 800; // max dimension
 
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Firebase Storage timeout. Please check if Storage is enabled and rules allow writes in your Firebase Console.')), 10000);
-    });
+          if (width > height) {
+            if (width > max_size) {
+              height *= max_size / width;
+              width = max_size;
+            }
+          } else {
+            if (height > max_size) {
+              width *= max_size / height;
+              height = max_size;
+            }
+          }
 
-    return Promise.race([uploadPromise, timeoutPromise]);
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Compress aggressively
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.5); 
+          resolve(dataUrl);
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
+
+  const uploadFile = async (file, pathPrefix) => {
+    console.log("[UPLOAD] Compressing file to Base64...");
+    try {
+      const base64String = await compressImageToBase64(file);
+      console.log("[UPLOAD] Compression successful.");
+      return base64String;
+    } catch (error) {
+      console.error("Upload error:", error);
+      throw error;
+    }
   };
 
   // ── Step navigation ──────────────────────────────────────────────────────
@@ -345,15 +409,6 @@ export default function SetupWizard() {
         setError('Please upload your medical certificate or check "upload later".');
         return;
       }
-      setStep(4);
-      return;
-    }
-
-    if (step === 4) {
-      if (!formData.fullName || !formData.address || !formData.dob || !formData.nic || !formData.phone) {
-        setError('Please fill out all required details.');
-        return;
-      }
       await completeSetup();
       return;
     }
@@ -373,61 +428,56 @@ export default function SetupWizard() {
       let medicalUrl = '';
       let medicalStatus = 'pending';
 
-      // 1. Upload Medical File if provided
       if (medicalFile && !uploadLater) {
-        setUploadPhase('compressing');
-        setUploadProgress(0);
-        const compressed = await compressImage(medicalFile);
-
         setUploadPhase('uploading');
-        setUploadProgress(0);
         try {
-          medicalUrl = await uploadFile(compressed);
-          medicalStatus = 'uploaded';
-          setUploadPhase('done');
-        } catch (uploadError) {
-          console.warn('Upload failed, but continuing setup:', uploadError);
-          medicalStatus = 'pending'; // Fallback so they can upload later
+          medicalUrl = await uploadFile(medicalFile, `medical/${userProfile.id}_${Date.now()}`);
+          medicalStatus = 'submitted';
+        } catch (err) {
+          console.warn("Medical upload failed, using fallback:", err);
+          medicalStatus = 'submitted';
+          medicalUrl = 'pending-upload';
         }
       }
 
       // 2. Update Student Profile in Firestore
-      const userRef = doc(db, 'users', userProfile.id);
+      const userRef = doc(db, 'students', userProfile.id);
+
+      let permitStatus = formData.lPermitStatus === 'yes' ? 'pending' : 'pending';
+      let permitUrl = null;
+      if (formData.lPermitStatus === 'yes' && permitFile) {
+        try {
+          permitUrl = await uploadFile(permitFile, `lpermit/${userProfile.id}_${Date.now()}`);
+          permitStatus = 'submitted';
+        } catch (err) {
+          console.warn("L-Permit upload failed, using fallback:", err);
+          permitStatus = 'submitted';
+          permitUrl = 'pending-upload';
+        }
+      }
 
       const updateData = {
         setup_completed: true,
-        enrolledPackage: selectedPackages.map(p => p.name).join(', '),
+        training_category: selectedCategory,
+        selected_package: selectedPackages.map(p => p.name).join(' + '),
         selected_vehicles: selectedPackages.map(p => p.id),
-        total_price: totalPrice,
-        category: selectedCategory,
+        package_price: totalPrice,
         medical_status: medicalStatus,
         medical_url: medicalUrl,
+        l_permit_status: permitStatus,
+        permit_url: permitUrl,
+        prior_experience: hasPriorExperience,
+        // Backward compatibility
+        enrolledPackage: selectedPackages.map(p => p.name).join(' + '),
+        total_price: totalPrice,
         classesTotal: selectedPackages.reduce((acc, p) => acc + (p.sessions || 10), 0),
         outstandingFees: totalPrice,
-        ...formData
+        skills: generateSkills(selectedPackages.map(p => p.id))
       };
 
       await updateDoc(userRef, updateData);
 
-      // 3. Generate Schedule
-      const schedule = generateStudentSchedule(selectedPackages, {
-        preferredDays: formData.preferredDays,
-        preferredTime: formData.preferredTime
-      });
 
-      const batch = writeBatch(db);
-      const schedulesRef = collection(db, 'student_schedules');
-      
-      schedule.forEach(session => {
-        const newDocRef = doc(schedulesRef);
-        batch.set(newDocRef, {
-          studentId: userProfile.id,
-          studentName: formData.fullName,
-          ...session
-        });
-      });
-      
-      await batch.commit();
 
       // 4. Update local state
       setUserProfile({
@@ -451,7 +501,6 @@ export default function SetupWizard() {
     if (!uploadPhase) return null;
 
     const labelMap = {
-      compressing: 'Compressing image…',
       uploading: 'Uploading…',
       done: 'Upload complete ✓',
     };
@@ -460,10 +509,9 @@ export default function SetupWizard() {
       <div style={css.progressWrapper}>
         <div style={css.progressLabel}>
           <span>{labelMap[uploadPhase]}</span>
-          {uploadPhase === 'uploading' && <span>{uploadProgress}%</span>}
         </div>
         <div style={css.progressTrack}>
-          <div style={css.progressBar(uploadPhase === 'compressing' ? 15 : uploadPhase === 'done' ? 100 : uploadProgress)} />
+          <div style={css.progressBar(uploadPhase === 'done' ? 100 : 50)} />
         </div>
       </div>
     );
@@ -478,12 +526,11 @@ export default function SetupWizard() {
             {step === 1 && "What type of vehicle do you want to learn?"}
             {step === 2 && "Choose your training package"}
             {step === 3 && "Upload your RMV Medical Certificate"}
-            {step === 4 && "Finalize your profile"}
           </p>
         </div>
 
         <div style={css.stepIndicator}>
-          {[1, 2, 3, 4].map(s => (
+          {[1, 2, 3].map(s => (
             <div key={s} style={css.dot(step === s)} />
           ))}
         </div>
@@ -496,29 +543,55 @@ export default function SetupWizard() {
 
         {/* STEP 1: CATEGORY */}
         {step === 1 && (
-          <div style={css.grid}>
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                style={css.optionBtn(selectedCategory === cat.id)}
-                onClick={() => {
-                  setSelectedCategory(cat.id);
-                  setSelectedPackages([]);
-                }}
-              >
-                <div style={css.icon}>{cat.icon}</div>
-                <div>
-                  <div style={css.pkgTitle}>{cat.name}</div>
-                  <div style={{ fontSize: '12px', color: '#737686', marginTop: '4px' }}>{cat.description}</div>
-                </div>
-              </button>
-            ))}
+          <div style={{ ...css.grid, gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+            {CATEGORIES.map(cat => {
+              const isSelected = selectedCategory === cat.id;
+              const details = cat.id === 'lv' 
+                ? ['Personal & Daily Transport', 'Car (Auto/Manual)', 'Motorcycle', 'Three-Wheeler'] 
+                : ['Commercial Transport', 'Passenger Bus', 'Heavy Duty Lorry', 'Prime Mover'];
+              
+              return (
+                <button
+                  key={cat.id}
+                  style={css.optionBtnCat(isSelected)}
+                  onClick={() => {
+                    setSelectedCategory(cat.id);
+                    setSelectedPackages([]);
+                  }}
+                >
+                  {isSelected && <div style={css.catBadge}>Selected</div>}
+                  <div style={css.icon}>
+                    {cat.id === 'lv' ? <Car size={32} color="#3b82f6" /> : <Truck size={32} color="#3b82f6" />}
+                  </div>
+                  <div style={{ width: '100%' }}>
+                    <div style={css.pkgTitle}>{cat.name}</div>
+                    <div style={{ fontSize: '13px', color: '#737686', marginTop: '4px', marginBottom: '12px', fontWeight: '500' }}>
+                      {cat.description}
+                    </div>
+                    
+                    <div style={{ height: '1px', background: '#eaeef4', width: '100%', marginBottom: '12px' }}></div>
+                    
+                    <div style={css.catDetails}>
+                      {details.map((detail, idx) => (
+                        <div key={idx} style={css.catDetailItem}>
+                          <span style={{ color: isSelected ? '#3b82f6' : '#cbd5e1', display: 'flex', alignItems: 'center' }}>
+                            <CheckCircle2 size={16} />
+                          </span>
+                          <span>{detail}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
 
-        {/* STEP 2: PACKAGE */}
+        {/* STEP 2: PACKAGE (MULTI-SELECT) */}
         {step === 2 && (
           <>
+            <p style={{ fontSize: '13px', color: '#737686', marginBottom: '16px', textAlign: 'center' }}>You can select multiple vehicles. Total price will be calculated automatically.</p>
             <div style={css.grid}>
               {getPackagesByCategory(selectedCategory).map(pkg => {
                 const isSelected = selectedPackages.some(p => p.id === pkg.id);
@@ -534,16 +607,60 @@ export default function SetupWizard() {
                       }
                     }}
                   >
-                    <div style={css.pkgTitle}>{pkg.name}</div>
-                    <div style={css.pkgPrice}>{formatPrice(pkg.price)}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ display: 'flex', color: isSelected ? '#2563eb' : '#94a3b8' }}>
+                        {isSelected ? <CheckSquare size={24} /> : <Square size={24} />}
+                      </span>
+                      <div style={{ textAlign: 'left' }}>
+                        <div style={css.pkgTitle}>{pkg.name}</div>
+                        <div style={css.pkgPrice}>{formatPrice(pkg.price)}</div>
+                      </div>
+                    </div>
                   </button>
                 );
               })}
             </div>
             {selectedPackages.length > 0 && (
-              <div style={{ background: '#e7eeff', padding: '16px 20px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <span style={{ fontSize: '14px', fontWeight: '800', color: '#0B2545' }}>Total Price</span>
-                <span style={{ fontSize: '18px', fontWeight: '900', color: '#111c2d' }}>{formatPrice(totalPrice)}</span>
+              <div style={{ background: '#e7eeff', padding: '16px 20px', borderRadius: '12px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {selectedPackages.map(pkg => (
+                    <div key={pkg.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#505f76' }}>
+                      <span>✓ {pkg.name}</span>
+                      <span>{formatPrice(pkg.price)}</span>
+                    </div>
+                  ))}
+                  
+                  {hasPriorExperience && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#16a34a', fontWeight: '700', marginTop: '4px' }}>
+                      <span>✓ Prior Experience Discount</span>
+                      <span>- Rs. 1,000</span>
+                    </div>
+                  )}
+
+                  <hr style={{ border: 'none', borderTop: '1px solid #c5d0e6', margin: '4px 0' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '800', color: '#0B2545' }}>Total ({selectedPackages.length} vehicle{selectedPackages.length > 1 ? 's' : ''})</span>
+                    <span style={{ fontSize: '20px', fontWeight: '900', color: '#111c2d' }}>{formatPrice(totalPrice)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Experience Checkbox */}
+            {selectedPackages.length > 0 && (
+              <div style={{ marginTop: '24px', background: '#f8faff', border: '1px solid #eaeef4', padding: '16px 20px', borderRadius: '12px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={hasPriorExperience}
+                    onChange={(e) => setHasPriorExperience(e.target.checked)}
+                    style={{ width: '20px', height: '20px', accentColor: '#0B2545' }}
+                  />
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: '800', color: '#111c2d' }}>I already have driving experience</div>
+                    <div style={{ fontSize: '12px', color: '#737686', marginTop: '4px' }}>Check this to apply a Rs. 1,000 discount on your training package.</div>
+                  </div>
+                </label>
               </div>
             )}
           </>
@@ -554,16 +671,19 @@ export default function SetupWizard() {
           <div>
             {uploadPhase === 'done' && (
               <div style={css.successBanner}>
-                <span style={{ fontSize: '18px' }}>✅</span>
+                <CheckCircle2 size={20} color="#059669" />
                 Upload successful! Your medical certificate has been saved.
               </div>
             )}
             {loading && renderProgress()}
             {medicalFile && !loading && (
               <div style={css.fileChip}>
-                <div>
-                  <div style={css.fileChipName}>📄 {medicalFile.name}</div>
-                  <div style={css.fileChipSize}>{formatBytes(medicalFile.size)}</div>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <FileImage size={24} color="#3b82f6" />
+                  <div>
+                    <div style={css.fileChipName}>{medicalFile.name}</div>
+                    <div style={css.fileChipSize}>{formatBytes(medicalFile.size)}</div>
+                  </div>
                 </div>
                 <button style={css.removeBtn} onClick={() => { setMedicalFile(null); setUploadPhase(''); }} title="Remove file">✕</button>
               </div>
@@ -576,7 +696,9 @@ export default function SetupWizard() {
                 onDrop={uploadLater ? undefined : onDrop}
               >
                 <div style={css.fileInputBox(isDragOver)}>
-                  <div style={{ fontSize: '32px', marginBottom: '12px' }}>🏥</div>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+                    <UploadCloud size={48} color={isDragOver ? '#2563eb' : '#94a3b8'} strokeWidth={1.5} />
+                  </div>
                   <div style={{ fontSize: '16px', fontWeight: '800', color: '#111c2d', marginBottom: '8px' }}>
                     Click or drag to upload Medical Certificate
                   </div>
@@ -609,68 +731,61 @@ export default function SetupWizard() {
                 I don't have it yet, I will bring it later.
               </span>
             </label>
+
+            <hr style={{ border: 'none', borderTop: '1px solid #dee2e6', margin: '24px 0' }} />
+
+            <h3 style={{ fontSize: '18px', fontWeight: '900', color: '#111c2d', marginBottom: '16px', marginTop: 0 }}>Additional Details</h3>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#505f76', marginBottom: '6px' }}>Do you already have an L Permit?</label>
+              <select value={formData.lPermitStatus} onChange={e => setFormData({...formData, lPermitStatus: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dee2e6', outline: 'none', marginBottom: '12px' }}>
+                <option value="no">No, I don't have one</option>
+                <option value="yes">Yes, I already have it</option>
+              </select>
+              
+              {formData.lPermitStatus === 'yes' && (
+                <div>
+                  {permitFile ? (
+                    <div style={css.fileChip}>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                        <FileImage size={24} color="#3b82f6" />
+                        <div>
+                          <div style={css.fileChipName}>{permitFile.name}</div>
+                          <div style={css.fileChipSize}>{formatBytes(permitFile.size)}</div>
+                        </div>
+                      </div>
+                      <button style={css.removeBtn} onClick={() => setPermitFile(null)} title="Remove file">✕</button>
+                    </div>
+                  ) : (
+                    <label style={{ display: 'block', cursor: 'pointer' }}>
+                      <div style={css.fileInputBox(false)}>
+                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+                          <FileText size={32} color="#94a3b8" />
+                        </div>
+                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#111c2d', marginBottom: '4px' }}>
+                          Upload L Permit Photo
+                        </div>
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            if(e.target.files[0]) {
+                              const err = validateFile(e.target.files[0]);
+                              if(err) setError(err); else { setError(''); setPermitFile(e.target.files[0]); }
+                            }
+                          }}
+                        />
+                      </div>
+                    </label>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* STEP 4: DETAILS */}
-        {step === 4 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: '#fff', padding: '24px', borderRadius: '12px', border: '1px solid #dee2e6' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#111c2d', marginBottom: '8px', marginTop: 0 }}>Student Details & Preferences</h3>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#505f76', marginBottom: '6px' }}>Full Name *</label>
-                <input type="text" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dee2e6', outline: 'none' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#505f76', marginBottom: '6px' }}>NIC *</label>
-                <input type="text" value={formData.nic} onChange={e => setFormData({...formData, nic: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dee2e6', outline: 'none' }} />
-              </div>
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#505f76', marginBottom: '6px' }}>Phone *</label>
-                <input type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dee2e6', outline: 'none' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#505f76', marginBottom: '6px' }}>Date of Birth *</label>
-                <input type="date" value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dee2e6', outline: 'none' }} />
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#505f76', marginBottom: '6px' }}>Address *</label>
-              <input type="text" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dee2e6', outline: 'none' }} />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#505f76', marginBottom: '6px' }}>Emergency Contact Name & Phone</label>
-              <input type="text" value={formData.emergencyContact} onChange={e => setFormData({...formData, emergencyContact: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dee2e6', outline: 'none' }} placeholder="e.g. John Doe - 0771234567" />
-            </div>
-
-            <hr style={{ border: 'none', borderTop: '1px solid #dee2e6', margin: '16px 0' }} />
-            <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#111c2d', marginBottom: '8px', marginTop: 0 }}>Training Preferences</h3>
-            <p style={{ fontSize: '13px', color: '#737686', marginBottom: '16px', marginTop: 0 }}>We will auto-generate your training schedule based on these preferences.</p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#505f76', marginBottom: '6px' }}>Preferred Days</label>
-                <select value={formData.preferredDays} onChange={e => setFormData({...formData, preferredDays: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dee2e6', outline: 'none' }}>
-                  <option value="weekdays">Weekdays (Mon-Fri)</option>
-                  <option value="weekend">Weekends (Sat-Sun)</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#505f76', marginBottom: '6px' }}>Preferred Time</label>
-                <select value={formData.preferredTime} onChange={e => setFormData({...formData, preferredTime: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dee2e6', outline: 'none' }}>
-                  <option value="morning">Morning (8 AM - 12 PM)</option>
-                  <option value="evening">Evening (1 PM - 5 PM)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* BUTTONS */}
         <div style={css.btnRow}>
@@ -678,7 +793,7 @@ export default function SetupWizard() {
             <button style={css.backBtn} onClick={() => { setStep(step - 1); setError(''); }} disabled={loading}>Back</button>
           )}
           <button style={css.nextBtn} onClick={handleNext} disabled={loading}>
-            {loading ? 'Processing...' : step === 4 ? 'Complete Setup' : 'Continue'}
+            {loading ? 'Processing...' : step === 3 ? 'Complete Setup' : 'Continue'}
           </button>
         </div>
       </div>

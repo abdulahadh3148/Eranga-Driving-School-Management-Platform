@@ -39,6 +39,7 @@ const initialRegistrations = [
     phone: '+94 71 888 2211',
     email: 'kasun.r@email.com',
     status: 'Pending',
+    testReady: true,
   },
 ];
 
@@ -139,6 +140,7 @@ const defaultStudents = [
     vehiclePreference: 'Toyota Prius',
     package: 'Premium',
     progress: 85,
+    testReady: true,
     avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAUD5oHDsF0NHscXJSNwB3t1BtOIfmoRvbxxQzrz6BVo4YstNyPP5c34zjZqWokwnsBntCwAsEcLDz7dGqv6czXorMLxxY74y5cMZTOyL_q8b5nigZPgB8fKTCfmLByNZxGhNz9c0Q7sdy6NXuZljducrtVmpRe01xqEBChSt8SKZGRIiqa9q-NwyIdza4ns444aYO3k_YhmD8v7FgI2yBN4nuPla1Vyl5o-obDaRK5y4xvquYZKLw2G5dS0u4VCkZ2bMDbzt35_20s'
   }
 ];
@@ -178,7 +180,7 @@ export default function AdminDashboard() {
 
   // Subscribe to students in Firestore
   useEffect(() => {
-    const q = query(collection(db, 'users'), where('role', '==', 'student'));
+    const q = query(collection(db, 'students'), where('role', '==', 'student'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetched = [];
       snapshot.forEach((doc) => {
@@ -199,7 +201,8 @@ export default function AdminDashboard() {
         licenseType: s.licenseType || 'Manual (Class B)',
         vehiclePreference: s.vehiclePreference || 'Toyota Prius',
         package: s.package || 'Premium',
-        progress: s.progress || 0
+        progress: s.progress || 0,
+        testReady: s.testReady || false
       }));
 
       if (prepared.length > 0) {
@@ -232,6 +235,13 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (!newName || !newNic) return;
 
+    // Check for duplicate NIC
+    const isDuplicate = students.some(s => s.nic === newNic);
+    if (isDuplicate) {
+      alert("A student with this NIC already exists.");
+      return;
+    }
+
     const newStudentId = 'manual_' + Date.now();
     const newStudent = {
       name: newName,
@@ -255,7 +265,7 @@ export default function AdminDashboard() {
     };
 
     try {
-      await setDoc(doc(db, 'users', newStudentId), newStudent);
+      await setDoc(doc(db, 'students', newStudentId), newStudent);
       setSelectedStudent({ id: newStudentId, ...newStudent });
       setPanelOpen(true);
 
@@ -552,6 +562,7 @@ export default function AdminDashboard() {
                         <th className="text-left py-4 px-6 font-label-md text-label-md text-secondary uppercase tracking-wider">
                           {studentSubTab === 'pending' ? 'Status' : 'Package'}
                         </th>
+                        <th className="text-center py-4 px-6 font-label-md text-label-md text-secondary uppercase tracking-wider">Test Ready</th>
                         <th className="text-right py-4 px-6 font-label-md text-label-md text-secondary uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
@@ -597,6 +608,15 @@ export default function AdminDashboard() {
                                 }`}>
                                   {student.package}
                                 </span>
+                              )}
+                            </td>
+
+                            {/* Test Ready Col */}
+                            <td className="py-4 px-6 text-center">
+                              {student.testReady ? (
+                                <span className="material-symbols-outlined text-green-500" title="Ready for Road Test">verified</span>
+                              ) : (
+                                <span className="material-symbols-outlined text-gray-300" title="Not Ready">hourglass_empty</span>
                               )}
                             </td>
 

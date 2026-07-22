@@ -83,7 +83,7 @@ export default function AdminVehicles() {
         await updateDoc(doc(db, 'vehicles', editId), data);
       } else {
         const newId = await generateCustomId('VEH');
-        await setDoc(doc(db, 'vehicles', newId), data);
+        await setDoc(doc(db, 'vehicles', newId), { ...data, id: newId });
       }
       setShowModal(false);
     } catch (err) {

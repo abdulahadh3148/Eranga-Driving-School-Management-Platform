@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../../firebase/config';
-import { collection, query, where, getDocs, doc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { firebaseConfig } from '../../firebase/config';
@@ -51,7 +51,7 @@ export default function AdminInstructors() {
 
   useEffect(() => {
     setLoading(true);
-    const q = query(collection(db, 'users'), where('role', '==', 'instructor'));
+    const q = query(collection(db, 'instructors'), where('role', '==', 'instructor'));
     const unsubscribe = onSnapshot(q, (snap) => {
       const allInstructors = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setInstructors(allInstructors);
@@ -97,7 +97,7 @@ export default function AdminInstructors() {
 
     // Check NIC and Phone uniqueness (only if new or changed)
     try {
-      const q = query(collection(db, 'users'), where('role', '==', 'instructor'));
+      const q = query(collection(db, 'instructors'), where('role', '==', 'instructor'));
       const snap = await getDocs(q);
       const existing = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       
@@ -145,9 +145,8 @@ export default function AdminInstructors() {
           status: form.status,
           updatedAt: new Date().toISOString()
         };
-        await updateDoc(doc(db, 'users', form.id), updateData);
         // Sync to instructors collection
-        await setDoc(doc(db, 'instructors', form.id), updateData, { merge: true });
+        await updateDoc(doc(db, 'instructors', form.id), updateData);
         showToast('Instructor profile updated successfully!');
       } else {
         // Create new
@@ -157,16 +156,16 @@ export default function AdminInstructors() {
           return;
         }
 
-        let tempApp;
-        try { tempApp = initializeApp(firebaseConfig, 'tempApp' + Date.now()); } catch (err) { console.error(err); }
-        const tempAuth = getAuth(tempApp);
-        
-        const userCred = await createUserWithEmailAndPassword(tempAuth, form.email, form.password);
+        // --- TEMPORARY BYPASS FIREBASE AUTH ---
+        // We bypass Firebase Auth to prevent CONFIGURATION_NOT_FOUND errors, 
+        // as the rest of the app (like student registration and login) is also using mock auth.
+        const mockUid = 'mock-uid-' + Date.now();
         const newCustomId = await generateCustomId('INS');
 
         const newData = {
           id: newCustomId,
-          authUid: userCred.user.uid,
+          authUid: mockUid,
+          mockPassword: form.password, // Save password so they can login via the bypass in LoginPage.jsx
           role: 'instructor',
           name: form.name,
           nic: form.nic,
@@ -187,17 +186,8 @@ export default function AdminInstructors() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
-        await setDoc(doc(db, 'users', newCustomId), newData);
         // Sync to instructors collection
         await setDoc(doc(db, 'instructors', newCustomId), newData);
-
-        // Cleanup temp auth app safely — data is already saved at this point
-        try {
-          await signOut(tempAuth);
-          await deleteApp(tempApp);
-        } catch (cleanupErr) {
-          console.warn('Temp auth cleanup warning (non-critical):', cleanupErr.message);
-        }
         showToast('Instructor created successfully!');
       }
 
@@ -246,14 +236,26 @@ export default function AdminInstructors() {
   };
 
   const handleDelete = async (id) => {
-    if (confirm("Are you sure you want to delete this instructor? This action cannot be fully undone.")) {
+    if (window.confirm("Are you sure you want to delete this instructor? This action cannot be fully undone.")) {
       try {
-        const updateData = {
-          status: 'deleted',
-          updatedAt: new Date().toISOString()
-        };
-        await updateDoc(doc(db, 'users', id), updateData);
-        await updateDoc(doc(db, 'instructors', id), updateData).catch(() => {});
+        // Check if instructor has active students assigned
+        const stuQ = query(collection(db, 'students'), where('assignedInstructorId', '==', id));
+        const stuSnap = await getDocs(stuQ);
+        if (!stuSnap.empty) {
+          showToast(`Cannot delete: This instructor is assigned to ${stuSnap.size} student(s). Reassign them first.`, 'error');
+          return;
+        }
+
+        // Check if instructor has upcoming sessions
+        const sessQ = query(collection(db, 'sessions'), where('instructorId', '==', id));
+        const sessSnap = await getDocs(sessQ);
+        const hasUpcoming = sessSnap.docs.some(d => d.data().status !== 'completed' && d.data().status !== 'cancelled');
+        if (hasUpcoming) {
+          showToast('Cannot delete: This instructor has upcoming scheduled sessions. Reassign or cancel them first.', 'error');
+          return;
+        }
+
+        await deleteDoc(doc(db, 'instructors', id));
         showToast('Instructor deleted successfully.');
       } catch (err) {
         console.error(err);
@@ -269,8 +271,7 @@ export default function AdminInstructors() {
         status: newStatus,
         updatedAt: new Date().toISOString()
       };
-      await updateDoc(doc(db, 'users', instructor.id), updateData);
-      await updateDoc(doc(db, 'instructors', instructor.id), updateData).catch(() => {});
+      await updateDoc(doc(db, 'instructors', instructor.id), updateData);
       showToast(`Instructor marked as ${newStatus}.`);
     } catch (err) {
       showToast('Failed to update status.', 'error');

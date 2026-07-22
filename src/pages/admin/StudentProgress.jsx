@@ -27,7 +27,7 @@ const StudentProgress = () => {
       setLoading(true);
       try {
         // Fetch student profile
-        const studentDoc = await getDoc(doc(db, 'users', studentId));
+        const studentDoc = await getDoc(doc(db, 'students', studentId));
         if (studentDoc.exists()) {
           setStudent({ id: studentDoc.id, ...studentDoc.data() });
         } else {

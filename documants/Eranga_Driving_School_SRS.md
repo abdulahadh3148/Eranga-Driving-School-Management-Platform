@@ -189,7 +189,8 @@ The primary features of the platform include:
 ### 3.2 DMT/RMV Learner Workflow Progress Tracking
 * **REQ-3.2.1**: The system shall support a dynamic 7-step tracker reflecting the student's DMT status (Medical Certificate -> DMT Application -> Theory Exam -> Learner's Permit -> Practical Training -> Practical Test -> License Issued).
 * **REQ-3.2.2**: The student's current step shall update in real-time on the student dashboard as administrators or instructors verify their progress.
-* **REQ-3.2.3**: The system shall restrict certain activities based on progress. For example, students cannot book practical lessons if their step status indicates they have not yet received their Learner's Permit.
+* **REQ-3.2.3**: Students shall be able to upload physical documents (Medical Certificate and L-Permit photos) directly through the platform for administrative verification.
+* **REQ-3.2.4**: The system shall restrict certain activities based on progress. For example, students cannot book practical lessons if their step status indicates they have not yet received their Learner's Permit.
 
 ### 3.3 Training Lesson Scheduling & Booking
 * **REQ-3.3.1**: Students shall be able to submit booking requests, choosing their preferred date, time slot, instructor, and vehicle.
@@ -228,6 +229,7 @@ The primary features of the platform include:
 * **REQ-3.9.1**: The system shall generate graphical business reports on the Admin Dashboard using Recharts data models.
 * **REQ-3.9.2**: Reports shall include monthly revenue timelines, monthly lesson tallies, and student pass/fail statistics.
 * **REQ-3.9.3**: The admin dashboard shall display quick KPI counters (e.g., Total Income, Active Students, Pending Registrations, Fleet Availability).
+* **REQ-3.9.4**: The system shall feature a dedicated "Past Students & Alumni" module that automatically archives graduated students and generates a printable, beautifully structured final training report compiling their skills, payments, and attendance.
 
 ---
 
@@ -389,12 +391,11 @@ The NoSQL data modeling for Google Firestore utilizes the following document ass
 | * uid (PK)          |1         N| * bookingId (PK)    |1         N| * paymentId (PK)    |
 | - name              |-----------| - studentId (FK)    |-----------| - studentId (FK)    |
 | - email             |           | - instructorId (FK) |           | - amount            |
-| - role (Student/    |           | - vehicleId (FK)    |           | - date              |
-|   Instructor/Admin) |           | - date              |           | - type (Card/Cash)  |
-| - status (Pending/  |           | - timeSlot          |           | - status            |
-|   Approved)         |           | - status (Pending/  |           +---------------------+
-| - progress (0-100)  |           |   Approved/Done)    |
-| - currentStep       |           +---------------------+
+| - role              |           | - vehicleId (FK)    |           | - date              |
+| - status            |           | - date              |           | - method            |
+| - progress (0-100)  |           | - timeSlot          |           | - reference         |
+| - medical_status    |           | - status            |           +---------------------+
+| - l_permit_status   |           +---------------------+
 +---------------------+
            |1
            |
@@ -436,6 +437,92 @@ The frontend React architecture is structured around components, utility hooks, 
          v                           v                           v
 - ViewPackages              - Availability              - AllStudents
 - BookingPage               - ActiveSession             - Vehicles
-- PaymentHistory            - MarkComplete              - Bookings
-- ProgressTracker           - SessionDetails            - Payments
+- PaymentHistory            - MarkComplete              - ApprovalsPage
+- CheckoutPage              - SessionDetails            - StudentReport
+- ProgressTracker           - BookedSlots               - PastStudents
 ```
+
+---
+
+## 9. SYSTEM UI WORKFLOW & COMPONENTS
+
+This section explains the core functionalities and user workflows of the Eranga Driving School Management System.
+
+### 9.1 Authentication Module
+
+#### 9.1.1 Login Page (`LoginPage.jsx`)
+The Login page serves as the single entry point for all users (Admins, Instructors, and Students). 
+- **Functionality:** It captures the user's credentials (email and password) and authenticates them securely via Firebase Authentication.
+- **Role-Based Routing:** Upon successful authentication, the system queries the Firestore database to determine the user's role. Based on the role, the system automatically redirects the user to their respective dashboard (e.g., `/admin`, `/instructor`, or `/student`), ensuring secure and role-specific access.
+
+#### 9.1.2 Register Page (`RegisterPage.jsx`)
+This page allows new students to sign up for the driving school.
+- **Functionality:** It collects basic personal information (Name, NIC, Phone, Email, Password). 
+- **Data Flow:** After creating a Firebase Auth account, a new document is created in the `students` Firestore collection. The student is initially assigned a `status` of `'pending'` until an administrator reviews and approves their application.
+
+---
+
+### 9.2 Student Onboarding & Dashboard
+
+#### 9.2.1 Setup Wizard (`SetupWizard.jsx`)
+After a successful registration, the student is redirected to a multi-step onboarding wizard to gather training-specific requirements.
+
+- **Step 1 (Vehicle Category Selection):** The student chooses between "Light Vehicle" (Car, Van) or "Heavy Vehicle" (Lorry, Bus).
+- **Step 2 (Vehicle Type & Experience):** 
+  - Based on the category, the student selects the transmission type (e.g., Auto or Manual). 
+  - An "Already have driving experience?" checkbox allows the system to tailor the instructor's approach (e.g., skipping absolute beginner basics).
+- **Step 3 (Document Upload):** The student is required to upload clear images of their Medical Certificate and Learner’s Permit. These documents are securely stored in Firebase Storage and linked to the student's profile for admin verification.
+
+#### 9.2.2 Student Dashboard (`StudentDashboard.jsx`)
+The central hub for a student to monitor their driving school journey.
+- **Overview:** Displays the student's assigned instructor, enrolled package, and the next upcoming driving session.
+- **Progress Track (5-Step Tracker):** A visual milestone tracker that highlights the student's current phase in the driving school lifecycle:
+  1. *Registration* (Account Created)
+  2. *Approval* (Admin verified documents)
+  3. *Enrolled* (Package & Instructor assigned)
+  4. *Practical Training* (Actively taking driving classes)
+  5. *Test Ready* (Instructor certified the student for the RMV practical test)
+
+#### 9.2.3 Booking Page (`BookingPage.jsx`)
+Allows students to request specific time slots for their practice sessions.
+- **Functionality:** The student selects a date and picks from available time slots. They can also specify if the booking is a standard "Practice Lesson" or the final "Road Test".
+- **Workflow:** The submitted booking is saved with a `pending` status. It will not appear on the instructor's schedule until the Admin approves it.
+
+---
+
+### 9.3 Administrator Module
+
+#### 9.3.1 Admin Dashboard (`Dashboard.jsx`)
+The command center for the driving school administrator.
+- **Functionality:** Provides high-level analytics, including total active students, upcoming bookings, revenue generated, and alerts for pending approvals. It offers quick-action shortcuts to manage day-to-day operations efficiently.
+
+#### 9.3.2 Master Scheduling Page (`SchedulePage.jsx`)
+A comprehensive calendar interface for the admin to oversee all driving sessions.
+- **Functionality:** The admin can view the schedules of all instructors. They can manually create new sessions by selecting a student, an instructor, a date, and a time slot.
+- **Conflict Prevention:** The system runs a validation check before creating a session to ensure neither the instructor nor the student is double-booked for that specific time slot.
+
+#### 9.3.3 Pending Approvals (`ApprovalsPage.jsx` / `PendingStudents.jsx`)
+The administrative queue for reviewing new student applications.
+- **Functionality:** The admin reviews the Medical Certificate and Learner's Permit uploaded by the student during the Setup Wizard. 
+- **Action:** The admin assigns a specific training package and an instructor to the student, then changes their status to `approved`, officially unlocking the student's dashboard.
+
+---
+
+### 9.4 Instructor Module
+
+#### 9.4.1 Instructor Dashboard (`InstructorDashboard.jsx`)
+A focused view for instructors to manage their daily teaching tasks.
+- **Functionality:** Displays vital statistics such as total assigned students and the number of classes scheduled for today. It features a "Today's Schedule" section for quick access to immediate appointments.
+
+#### 9.4.2 Instructor Scheduling Page (`MySchedule.jsx`)
+A personalized calendar for the instructor.
+- **Functionality:** Unlike the Admin's Master Schedule, this page filters the database to show *only* the sessions assigned to the logged-in instructor. It categorizes sessions into "Upcoming" and "Past", allowing instructors to prepare for future classes or log progress for completed ones.
+
+---
+
+### 9.5 Security & Routing
+
+#### 9.5.1 Role-Based Route Guard (`RoleRoute.jsx`)
+A critical security component built using React Router.
+- **Functionality:** It acts as a gatekeeper (Middleware) for protected pages. Before rendering a requested page (e.g., the Admin Dashboard), `RoleRoute` checks the authenticated user's profile in Firestore. 
+- **Security:** If a Student attempts to access a URL meant for an Admin, the `RoleRoute` intercepts the request and redirects them back to an unauthorized page or their own dashboard, preventing privilege escalation.

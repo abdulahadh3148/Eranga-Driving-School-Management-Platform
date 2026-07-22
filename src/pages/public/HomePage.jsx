@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { Headphones, MapPin, Award, TrendingUp, Star, ShieldCheck, Check, ChevronLeft, ChevronRight, Quote } from 'lucide-react';
+import { db } from '../../firebase/config';
+import { doc, getDoc } from 'firebase/firestore';
 
 const fadeInUp = {
   hidden: { opacity: 0, y: 40 },
@@ -19,7 +21,8 @@ export default function HomePage() {
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeTestimonial, setActiveTestimonial] = useState(0);
 
-  const heroSlides = [
+  // Dynamic states
+  const [heroSlides, setHeroSlides] = useState([
     {
       image: "/images/hero_driving_lesson_1779561685186.png",
       title: "Master the Road with Confidence",
@@ -30,18 +33,18 @@ export default function HomePage() {
       title: "Learn from Kurunegala's Elite Instructors",
       subtitle: "Maintaining a verified 98% first-attempt success rate across all vehicle classes."
     }
-  ];
+  ]);
 
-  const galleryImages = [
+  const [galleryImages, setGalleryImages] = useState([
     "/images/happy_student_license_1779561909390.png",
     "/images/sl_car_practice_1778907138866.png",
     "/images/student_female_avatar.png",
     "/images/student_male_avatar.png",
     "/images/sl_bike_practice_1778907087379.png",
     "/images/sl_van_practice_1778907161234.png"
-  ];
+  ]);
 
-  const testimonials = [
+  const [testimonials, setTestimonials] = useState([
     {
       text: "I got my license on my first attempt! The instructors made me feel so confident on the road. They were organized, kind, patient, and prepared me methodically for the practical test. Couldn't have imagined anyone better.",
       name: "Harshika Jayasekara",
@@ -50,15 +53,33 @@ export default function HomePage() {
       rating: 5
     },
     {
-      text: "The online portal made booking lessons and studying road signs incredibly easy. The instructors are highly professional and supportive. I passed my trail test yesterday with zero mistakes. Highly recommend Eranga Driving School!",
+      text: "The online portal made booking lessons and studying road signs incredibly easy. The instructors are highly professional and supportive. I passed my trail test yesterday with zero mistakes. Highly recommend DriveAdmin!",
       name: "Thilina Perera",
       location: "Peradeniya, Sri Lanka",
       image: "/images/student_male_avatar.png",
       rating: 5
     }
-  ];
+  ]);
+
+  // Load custom homepage contents
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'homepage'));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.heroSlides && data.heroSlides.length > 0) setHeroSlides(data.heroSlides);
+          if (data.galleryImages && data.galleryImages.length > 0) setGalleryImages(data.galleryImages);
+          if (data.testimonials && data.testimonials.length > 0) setTestimonials(data.testimonials);
+        }
+      } catch (err) {
+        console.error('Error fetching dynamic home contents:', err);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
+    if (heroSlides.length === 0) return;
     const timer = setInterval(() => {
       setActiveSlide((prev) => (prev + 1) % heroSlides.length);
     }, 6000);
@@ -66,6 +87,7 @@ export default function HomePage() {
   }, [heroSlides.length]);
 
   useEffect(() => {
+    if (testimonials.length === 0) return;
     const timer = setInterval(() => {
       setActiveTestimonial((prev) => (prev + 1) % testimonials.length);
     }, 8000);
@@ -108,7 +130,7 @@ export default function HomePage() {
     <div className="bg-surface font-body-md text-on-surface selection:bg-primary selection:text-white">
 
       {/* HERO SLIDESHOW SECTION */}
-      <section className="relative h-[65vh] md:h-[80vh] flex items-center justify-center overflow-hidden bg-slate-950">
+      <section className="relative h-[65vh] md:h-[80vh] flex items-center justify-center overflow-hidden bg-slate-900">
         {heroSlides.map((slide, index) => (
           <div
             key={index}
@@ -124,7 +146,7 @@ export default function HomePage() {
             />
           </div>
         ))}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-slate-950/30 z-10"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-slate-900/30 z-10"></div>
 
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -231,7 +253,7 @@ export default function HomePage() {
             >
               <div className="mb-lg">
                 <span className="text-primary font-black tracking-widest uppercase text-[11px] bg-primary-light px-3 py-1 rounded-full">Premium Quality Service</span>
-                <h2 className="font-headline-lg text-4xl font-extrabold text-slate-800 mt-xs leading-tight">Why is Eranga Driving School Special?</h2>
+                <h2 className="font-headline-lg text-4xl font-extrabold text-slate-800 mt-xs leading-tight">Why is DriveAdmin Special?</h2>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
@@ -417,29 +439,29 @@ export default function HomePage() {
             <p className="text-body-sm text-slate-500 font-medium mt-xs">Real students who aced their driving trials and won their licenses on the first run!</p>
           </motion.div>
 
-          <div className="relative">
-            <div className="flex gap-md overflow-x-auto pb-lg snap-x snap-mandatory scrollbar-thin scroll-smooth">
-              {galleryImages.map((imgUrl, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.4, delay: index * 0.1 }}
-                  className="flex-shrink-0 w-72 h-56 rounded-2xl overflow-hidden snap-start shadow-sm hover:shadow-md border border-slate-100 hover:border-primary/20 transition-all bg-slate-50"
-                >
-                  <img
-                    alt={`Successful Graduate ${index + 1}`}
-                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                    src={imgUrl}
-                    loading="lazy"
-                  />
-                </motion.div>
-              ))}
-            </div>
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 border border-slate-100 rounded-full p-2 shadow-md hidden sm:flex items-center justify-center animate-pulse">
-              <span className="material-symbols-outlined text-primary font-bold">chevron_right</span>
-            </div>
+          <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
+            {galleryImages.map((imgUrl, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: (index % 3) * 0.1 }}
+                className="break-inside-avoid relative rounded-2xl overflow-hidden shadow-sm hover:shadow-xl border border-slate-100 hover:border-primary/30 transition-all duration-300 group cursor-pointer bg-slate-50"
+              >
+                <img
+                  alt={`Successful Graduate ${index + 1}`}
+                  className="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-700 ease-out"
+                  src={imgUrl}
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+                  <span className="text-white font-bold text-sm translate-y-4 group-hover:translate-y-0 transition-transform duration-300 flex items-center gap-2">
+                    <Star size={16} className="text-yellow-400 fill-current" /> Passed First Attempt!
+                  </span>
+                </div>
+              </motion.div>
+            ))}
           </div>
         </div>
       </section>
@@ -460,7 +482,7 @@ export default function HomePage() {
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-lg items-stretch max-w-6xl mx-auto">
-            {/* Basic Package */}
+            {/* Motorcycle Package */}
             <motion.div
               variants={fadeInUp}
               initial="hidden"
@@ -469,22 +491,22 @@ export default function HomePage() {
               custom={0}
               className="flex flex-col p-8 bg-white rounded-3xl shadow-sm border border-slate-100 transition-all hover:border-primary/20 hover:shadow-lg"
             >
-              <h3 className="font-bold text-slate-800 text-2xl mb-xs">Basic Starter</h3>
+              <h3 className="font-bold text-slate-800 text-2xl mb-xs">Motorcycle</h3>
               <div className="mb-lg">
-                <span className="text-[36px] font-black text-primary">Rs. 15,000</span>
+                <span className="text-[36px] font-black text-primary">Rs. 5,500</span>
               </div>
               <ul className="space-y-sm mb-xl flex-grow font-medium">
-                {['5 Practical Lessons', 'Theory Support Included', 'Basic Vehicle Training'].map((f, i) => (
+                {['6 Practical Sessions', 'Theory Support Included', 'Private Practice Tracks'].map((f, i) => (
                   <li key={i} className="flex items-center gap-xs text-sm text-slate-500">
                     <span className="material-symbols-outlined text-primary text-[20px] fill-current">check_circle</span>
                     {f}
                   </li>
                 ))}
               </ul>
-              <button onClick={() => handleSelectPackage('Basic')} className="w-full py-3.5 px-lg rounded-xl border-2 border-primary text-primary font-bold hover:bg-primary hover:text-white transition-all">Select Package</button>
+              <button onClick={() => handleSelectPackage('lv-bike')} className="w-full py-3.5 px-lg rounded-xl border-2 border-primary text-primary font-bold hover:bg-primary hover:text-white transition-all">Select Package</button>
             </motion.div>
 
-            {/* Pro Package */}
+            {/* Car Manual Package */}
             <motion.div
               variants={fadeInUp}
               initial="hidden"
@@ -493,29 +515,25 @@ export default function HomePage() {
               custom={1}
               className="relative flex flex-col p-8 bg-white rounded-3xl shadow-md border-2 border-primary lg:scale-105 z-10"
             >
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-primary text-white px-4 py-1.5 rounded-full text-xs shadow-md whitespace-nowrap font-bold tracking-wider">
-                Special Offer: 15% OFF this month!
-              </div>
               <div className="flex justify-between items-start mb-xs">
-                <h3 className="font-bold text-slate-800 text-2xl">Pro Driver</h3>
-                <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg text-xs font-bold tracking-wider">BEST VALUE</span>
+                <h3 className="font-bold text-slate-800 text-2xl">Car Manual</h3>
+                <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg text-xs font-bold tracking-wider">POPULAR</span>
               </div>
               <div className="mb-lg">
-                <span className="text-[36px] font-black text-primary">Rs. 25,000</span>
-                <span className="text-slate-400 line-through text-sm ml-xs font-medium">Rs. 30,000</span>
+                <span className="text-[36px] font-black text-primary">Rs. 11,000</span>
               </div>
               <ul className="space-y-sm mb-xl flex-grow font-medium">
-                {['10 Practical Lessons', 'Mock Test Included', 'Choice of Training Vehicle', 'Priority Calendar Booking'].map((f, i) => (
+                {['10 Practical Sessions', 'Comprehensive Theory Support', 'Mock Test Included', 'Dual-Control Vehicles'].map((f, i) => (
                   <li key={i} className="flex items-center gap-xs text-sm text-slate-700">
                     <span className="material-symbols-outlined text-primary text-[20px] fill-current">check_circle</span>
                     {f}
                   </li>
                 ))}
               </ul>
-              <button onClick={() => handleSelectPackage('Standard')} className="w-full py-3.5 px-lg rounded-xl bg-primary text-white font-bold shadow-lg hover:bg-primary-hover transition-all active:scale-95">Select Package</button>
+              <button onClick={() => handleSelectPackage('lv-car-manual')} className="w-full py-3.5 px-lg rounded-xl bg-primary text-white font-bold shadow-lg hover:bg-primary-hover transition-all active:scale-95">Select Package</button>
             </motion.div>
 
-            {/* Premium Package */}
+            {/* Car Auto Package */}
             <motion.div
               variants={fadeInUp}
               initial="hidden"
@@ -524,19 +542,106 @@ export default function HomePage() {
               custom={2}
               className="flex flex-col p-8 bg-white rounded-3xl shadow-sm border border-slate-100 transition-all hover:border-primary/20 hover:shadow-lg"
             >
-              <h3 className="font-bold text-slate-800 text-2xl mb-xs">Ultimate License</h3>
+              <h3 className="font-bold text-slate-800 text-2xl mb-xs">Car Automatic</h3>
               <div className="mb-lg">
-                <span className="text-[36px] font-black text-primary">Rs. 45,000</span>
+                <span className="text-[36px] font-black text-primary">Rs. 13,000</span>
               </div>
               <ul className="space-y-sm mb-xl flex-grow font-medium font-medium">
-                {['20 Practical Lessons', 'Unlimited Mock Tests', 'Guarantee Pass Support', 'Premium Vehicle Practice'].map((f, i) => (
+                {['10 Practical Sessions', 'Comprehensive Theory Support', 'Mock Test Included', 'Smooth Auto Vehicles'].map((f, i) => (
                   <li key={i} className="flex items-center gap-xs text-sm text-slate-500">
                     <span className="material-symbols-outlined text-primary text-[20px] fill-current">check_circle</span>
                     {f}
                   </li>
                 ))}
               </ul>
-              <button onClick={() => handleSelectPackage('Premium')} className="w-full py-3.5 px-lg rounded-xl border-2 border-primary text-primary font-bold hover:bg-primary hover:text-white transition-all">Select Package</button>
+              <button onClick={() => handleSelectPackage('lv-car-auto')} className="w-full py-3.5 px-lg rounded-xl border-2 border-primary text-primary font-bold hover:bg-primary hover:text-white transition-all">Select Package</button>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* LOCATIONS & MAPS SECTION */}
+      <section id="locations" className="py-24 px-margin-mobile bg-white border-t border-slate-100">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-16"
+          >
+            <span className="text-primary font-black uppercase tracking-widest text-[11px] bg-primary-light px-3 py-1 rounded-full">Find Us</span>
+            <h2 className="font-headline-lg text-4xl font-extrabold text-slate-800 mt-xs">Key Locations & Maps</h2>
+            <p className="font-body-md text-slate-500 font-medium max-w-xl mx-auto mt-xs">Everything you need to know about our training centers, medical testing, and RMV offices.</p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Map Frame */}
+            <motion.div 
+              initial={{ opacity: 0, x: -30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="lg:col-span-2 rounded-3xl overflow-hidden shadow-lg border border-slate-200 h-[400px] lg:h-auto relative"
+            >
+              <iframe 
+                src="https://maps.google.com/maps?q=Kurunegala+Sri+Lanka&t=&z=13&ie=UTF8&iwloc=&output=embed" 
+                width="100%" 
+                height="100%" 
+                style={{ border: 0, minHeight: '100%' }} 
+                allowFullScreen="" 
+                loading="lazy" 
+                referrerPolicy="no-referrer-when-downgrade"
+                title="Eranga Driving School Location"
+              ></iframe>
+            </motion.div>
+
+            {/* Location Cards */}
+            <motion.div 
+              initial={{ opacity: 0, x: 30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="flex flex-col gap-4"
+            >
+              {/* Driving School */}
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 hover:border-primary/30 transition-all hover:shadow-md cursor-pointer group" onClick={() => window.open('https://maps.app.goo.gl/3wQqxtfqNeRwjk7V6', '_blank')}>
+                <div className="flex items-start gap-4">
+                  <div className="bg-primary/10 p-3 rounded-xl text-primary group-hover:scale-110 transition-transform">
+                    <MapPin size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-lg">Eranga Driving School</h3>
+                    <p className="text-sm text-slate-500 mt-1">Main Training Center & Office. Click to open in Google Maps.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Medical Center */}
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 hover:border-blue-500/30 transition-all hover:shadow-md group">
+                <div className="flex items-start gap-4">
+                  <div className="bg-blue-100 p-3 rounded-xl text-blue-600 group-hover:scale-110 transition-transform">
+                    <ShieldCheck size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-lg">NTMI Medical Center</h3>
+                    <p className="text-sm text-slate-500 mt-1">Required for Medical Certificates. Locate your nearest branch for tests.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* RMV / DMV */}
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 hover:border-orange-500/30 transition-all hover:shadow-md group">
+                <div className="flex items-start gap-4">
+                  <div className="bg-orange-100 p-3 rounded-xl text-orange-600 group-hover:scale-110 transition-transform">
+                    <Award size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-lg">RMV / DMV Office</h3>
+                    <p className="text-sm text-slate-500 mt-1">For Written & Practical Exams. Typically coordinated by our instructors.</p>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           </div>
         </div>
@@ -558,7 +663,7 @@ export default function HomePage() {
             <div className="relative z-10 text-white max-w-3xl mx-auto">
               <h2 className="font-headline-xl text-3xl md:text-5xl font-extrabold mb-md leading-tight text-white">Start Your Driving Journey Today!</h2>
               <p className="font-body-lg text-slate-300 mb-lg max-w-xl mx-auto text-sm md:text-base font-medium">
-                Join thousands of successful drivers who have claimed their independence on the road with Eranga Driving School.
+                Join thousands of successful drivers who have claimed their independence on the road with DriveAdmin.
               </p>
               <Link to="/register" className="bg-primary hover:bg-primary-hover border border-white/10 text-white px-8 py-3.5 rounded-xl font-bold shadow-2xl transition-all hover:scale-105 active:scale-95 inline-block">Register Online Now</Link>
             </div>

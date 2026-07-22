@@ -23,7 +23,7 @@ export default function InstructorsPage() {
   useEffect(() => {
     const fetchInstructors = async () => {
       try {
-        const q = query(collection(db, 'users'), where('role', '==', 'instructor'));
+        const q = query(collection(db, 'instructors'), where('role', '==', 'instructor'));
         const snap = await getDocs(q);
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         setInstructors(data);

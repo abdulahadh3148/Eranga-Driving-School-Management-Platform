@@ -57,7 +57,7 @@ export default function MarkComplete() {
       });
 
       if (session?.studentId) {
-        const stuRef = doc(db, 'users', session.studentId);
+        const stuRef = doc(db, 'students', session.studentId);
         let updates = {
           classesCompleted: increment(1),
           progress: increment(5)
@@ -67,18 +67,12 @@ export default function MarkComplete() {
         }
         await updateDoc(stuRef, updates);
 
-        await addDoc(collection(db, 'notifications'), {
+        const { sendNotification } = await import('../../utils/notifications');
+        await sendNotification({
           userId: session.studentId,
-          studentId: session.studentId,
           title: 'Session Completed',
           message: `Your session on ${session.date} (${session.time}) has been marked completed by your instructor.`,
-          body: `Your session on ${session.date} (${session.time}) has been marked completed by your instructor.`,
-          type: 'booking',
-          icon: '🎓',
-          isRead: false,
-          unread: true,
-          date: new Date().toISOString(),
-          createdAt: new Date().toISOString()
+          type: 'booking'
         });
       }
 

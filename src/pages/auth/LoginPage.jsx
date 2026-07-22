@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebase/config';
 import { useAuth } from '../../context/AuthContext';
 import './LoginPage.css';
 
 const LoginPage = () => {
-  const { currentUser, userProfile, loading: authLoading, loginMockUser } = useAuth();
+  const { currentUser, userProfile, setUserProfile, loading: authLoading, loginMockUser } = useAuth();
   const [role, setRole] = useState('student');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,9 +18,17 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Inline Validation States
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
   useEffect(() => {
     if (location.state?.registrationSuccess) {
-      setSuccessMessage('Account created successfully! Please login below.');
+      if (location.state?.pendingApproval) {
+        setSuccessMessage('Account created successfully! Please wait for admin approval before logging in.');
+      } else {
+        setSuccessMessage('Account created successfully! Please login below.');
+      }
       if (location.state?.email) {
         setEmail(location.state.email);
       }
@@ -32,101 +40,119 @@ const LoginPage = () => {
   useEffect(() => {
     // Auto-redirect if already logged in and profile is fully loaded
     if (!authLoading && currentUser && userProfile) {
-      if (userProfile.role === 'student') navigate('/student');
-      else if (userProfile.role === 'instructor') navigate('/instructor');
-      else if (userProfile.role === 'admin') navigate('/admin');
+      if (userProfile.status === 'pending') {
+        navigate('/pending-approval');
+      } else if (userProfile.role === 'student') {
+        navigate('/student');
+      } else if (userProfile.role === 'instructor') {
+        navigate('/instructor');
+      } else if (userProfile.role === 'admin') {
+        navigate('/admin');
+      }
     }
   }, [authLoading, currentUser, userProfile, navigate]);
+
+  const validateEmail = (val) => {
+    setEmail(val);
+    if (!val) {
+      setEmailError('Email is required.');
+      return false;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(val)) {
+      setEmailError('Please enter a valid email address.');
+      return false;
+    }
+    setEmailError('');
+    return true;
+  };
+
+  const validatePassword = (val) => {
+    setPassword(val);
+    if (!val) {
+      setPasswordError('Password is required.');
+      return false;
+    }
+    if (val.length < 6) {
+      setPasswordError('Password must be at least 6 characters.');
+      return false;
+    }
+    setPasswordError('');
+    return true;
+  };
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!email || !password) {
-      setError('Please enter both email and password.');
+    const isEmailValid = validateEmail(email);
+    const isPasswordValid = validatePassword(password);
+
+    if (!isEmailValid || !isPasswordValid) {
+      setError('Please correct the validation errors below.');
       return;
     }
 
     setLoading(true);
 
     try {
-      // ─── Admin: Hardcoded mock login ───
-      const ADMIN_EMAIL = 'admin@drivingschool.com';
-      const ADMIN_PASSWORD = 'Admin@123';
-
-      if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-        if (role !== 'admin') {
-          setError('Admin login must be selected in the role tabs.');
-          setLoading(false);
-          return;
-        }
-        loginMockUser({
-          uid: 'admin-mock-uid',
-          name: 'School Administrator',
-          email: ADMIN_EMAIL,
-          role: 'admin',
-          status: 'approved',
-          createdAt: new Date().toISOString()
-        });
+      // Hardcoded Admin bypassing Firebase Auth for demo
+      if (role === 'admin' && email === 'admin@drivingschool.com' && password === 'Admin@123') {
+        const mockAdminProfile = {
+          uid: 'admin-123',
+          email: 'admin@drivingschool.com',
+          name: 'Admin',
+          role: 'admin'
+        };
+        loginMockUser(mockAdminProfile);
         navigate('/admin');
         setLoading(false);
         return;
       }
 
-      // ─── Instructor / Student: Try Firestore-first mock login for seeded users ───
-      // This handles users created via the admin seeder who don't have Firebase Auth accounts
-      const DEFAULT_PASSWORD = 'password123';
-
-      const userQuery = query(
-        collection(db, 'users'),
-        where('email', '==', email),
-        where('role', '==', role)
-      );
-      const userSnap = await getDocs(userQuery);
-
-      if (!userSnap.empty && password === DEFAULT_PASSWORD) {
-        const profile = userSnap.docs[0].data();
-        const profileId = userSnap.docs[0].id;
-
-        // Mock login for seeded users (students/instructors) with status validation
-        const mockProfile = {
-          uid: profile.authUid || profileId,
-          id: profileId,
-          name: profile.name || 'User',
-          email: profile.email,
-          role: profile.role,
-          status: profile.status || 'approved',
-          phone: profile.phone || '',
-          progressLevel: profile.progressLevel || '',
-          progress: profile.progress || 0,
-          createdAt: profile.createdAt || new Date().toISOString()
-        };
-
-        // Enforce student approval status before allowing login
-        if (mockProfile.role === 'student' && mockProfile.status !== 'approved') {
-          const errMsg = mockProfile.status === 'rejected' ? 'Your account has been rejected. Contact admin.' : 'Your account is waiting for admin approval.';
-          setError(errMsg);
+      // 1. Authenticate with Firebase Auth first to verify the password
+      let userCredential;
+      try {
+        userCredential = await signInWithEmailAndPassword(auth, email, password);
+      } catch (authErr) {
+        console.error("Firebase Auth Error:", authErr);
+        
+        // --- AUTO-MIGRATE OLD USERS ---
+        if (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential' || authErr.code === 'auth/wrong-password') {
+          const q = query(collection(db, role + 's'), where('email', '==', email));
+          const authUserSnap = await getDocs(q);
+          if (!authUserSnap.empty) {
+             const profile = authUserSnap.docs[0].data();
+             const docId = authUserSnap.docs[0].id;
+             if (!profile.authUid || profile.authUid.startsWith('mock-uid-') || profile.authUid.startsWith('mock-')) {
+                console.log("Migrating old user to Firebase Auth...");
+                try {
+                  userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                  await updateDoc(doc(db, role + 's', docId), { authUid: userCredential.user.uid });
+                } catch (migrateErr) {
+                  setError('Auto-migration failed: ' + migrateErr.message);
+                  setLoading(false);
+                  return;
+                }
+             } else {
+                setError('Incorrect password for this user (Firebase Auth rejected it).');
+                setLoading(false);
+                return;
+             }
+          } else {
+             setError(`Email not found in the ${role}s database.`);
+             setLoading(false);
+             return;
+          }
+        } else {
+          setError(`Firebase Auth Error: ${authErr.message}`);
           setLoading(false);
           return;
         }
-
-        // Proceed with mock login
-        loginMockUser(mockProfile);
-
-        if (role === 'instructor') navigate('/instructor');
-        else if (role === 'student') navigate('/student');
-        else navigate('/');
-
-        setLoading(false);
-        return;
       }
 
-      // ─── Firebase Auth login (for users created via registration form) ───
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // Fetch profile from Firestore using authUid
-      const q = query(collection(db, 'users'), where('authUid', '==', user.uid));
+      // 2. Fetch profile from Firestore
+      const q = query(collection(db, role + 's'), where('email', '==', email));
       const authUserSnap = await getDocs(q);
 
       if (!authUserSnap.empty) {
@@ -134,37 +160,43 @@ const LoginPage = () => {
         profile.id = authUserSnap.docs[0].id;
 
         if (profile.role !== role) {
-          setError(`This account is registered as a ${profile.role.toUpperCase()}, not a ${role.toUpperCase()}.`);
-          auth.signOut();
+          setError(`This account is registered as a ${profile.role?.toUpperCase()}, not a ${role.toUpperCase()}.`);
+          await auth.signOut();
           return;
         }
 
         if (profile.role === 'student') {
-          if (profile.status !== 'approved') {
-            const errMsg = profile.status === 'rejected' ? 'Your account has been rejected. Contact admin.' : 'Your account is waiting for admin approval.';
+          if (profile.status === 'pending') {
+            await auth.signOut();
+            setError('Your account is still pending admin approval. Please wait until an admin approves your registration.');
+            return;
+          }
+          if (profile.status !== 'approved' && profile.status !== 'active') {
+            const errMsg = profile.status === 'rejected' ? 'Your account has been rejected. Contact admin.' : 'Your account is not active.';
             setError(errMsg);
             await auth.signOut();
             return;
           }
+          // Clear any mock user so AuthContext fetches fresh data on reload
+          localStorage.removeItem('mockUser');
+          setUserProfile(profile);
           navigate('/student');
         } else if (profile.role === 'instructor') {
+          localStorage.removeItem('mockUser');
+          setUserProfile(profile);
           navigate('/instructor');
         } else if (profile.role === 'admin') {
+          localStorage.removeItem('mockUser');
+          setUserProfile(profile);
           navigate('/admin');
         }
       } else {
-        setError('User profile not found in database.');
-        auth.signOut();
+        setError(`Email not found in the ${role}s database.`);
+        await auth.signOut();
       }
     } catch (err) {
       console.error(err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
-        setError('Invalid email or password.');
-      } else if (err.code === 'auth/invalid-email') {
-        setError('Please enter a valid email address.');
-      } else {
-        setError('Failed to log in. Please try again.');
-      }
+      setError('Failed to log in. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -266,18 +298,25 @@ const LoginPage = () => {
               {/* Email Input */}
               <div className="form-group">
                 <label className="form-label" htmlFor="email">Email Address</label>
-                <div className="input-wrapper">
-                  <span className="material-symbols-outlined input-icon">mail</span>
+                <div className="input-wrapper" style={{ borderColor: emailError ? '#ef4444' : (email && !emailError ? '#10b981' : '') }}>
+                  <span className="material-symbols-outlined input-icon" style={{ color: emailError ? '#ef4444' : (email && !emailError ? '#10b981' : '') }}>mail</span>
                   <input
                     className="input-field"
                     id="email"
                     placeholder="name@example.com"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => validateEmail(e.target.value)}
                     disabled={loading}
+                    style={{ paddingRight: '40px' }}
                   />
+                  {email && (
+                    <span className="material-symbols-outlined" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: emailError ? '#ef4444' : '#10b981', fontSize: '18px' }}>
+                      {emailError ? 'cancel' : 'check_circle'}
+                    </span>
+                  )}
                 </div>
+                {emailError && <span style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', display: 'block', fontWeight: 550 }}>{emailError}</span>}
               </div>
 
               {/* Password Input */}
@@ -286,28 +325,31 @@ const LoginPage = () => {
                   <label className="form-label" htmlFor="password">Password</label>
                   <Link className="forgot-password" to="/contact">Forgot Password?</Link>
                 </div>
-                <div className="input-wrapper has-action">
-                  <span className="material-symbols-outlined input-icon">lock</span>
+                <div className="input-wrapper has-action" style={{ borderColor: passwordError ? '#ef4444' : (password && !passwordError ? '#10b981' : '') }}>
+                  <span className="material-symbols-outlined input-icon" style={{ color: passwordError ? '#ef4444' : (password && !passwordError ? '#10b981' : '') }}>lock</span>
                   <input
                     className="input-field"
                     id="password"
                     placeholder="••••••••"
                     type={showPassword ? "text" : "password"}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => validatePassword(e.target.value)}
                     disabled={loading}
+                    style={{ paddingRight: '76px' }}
                   />
                   <button
                     className="input-action"
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading}
+                    style={{ right: 12 }}
                   >
                     <span className="material-symbols-outlined">
                       {showPassword ? "visibility_off" : "visibility"}
                     </span>
                   </button>
                 </div>
+                {passwordError && <span style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', display: 'block', fontWeight: 550 }}>{passwordError}</span>}
               </div>
 
               {/* Remember Me */}

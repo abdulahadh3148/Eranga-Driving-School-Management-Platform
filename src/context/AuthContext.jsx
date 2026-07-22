@@ -19,9 +19,13 @@ export const AuthProvider = ({ children }) => {
     if (mockUserStr) {
       try {
         const mockUserObj = JSON.parse(mockUserStr);
+        if (mockUserObj.name === 'Super Admin') {
+          mockUserObj.name = 'Admin';
+          localStorage.setItem('mockUser', JSON.stringify(mockUserObj));
+        }
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setCurrentUser({
-          uid: mockUserObj.uid || 'mock-uid',
+          uid: mockUserObj.uid || mockUserObj.authUid || mockUserObj.id || 'mock-uid',
           email: mockUserObj.email,
           displayName: mockUserObj.name
         });
@@ -42,25 +46,42 @@ export const AuthProvider = ({ children }) => {
       if (user) {
         setCurrentUser(user);
         try {
-          const q = query(collection(db, 'users'), where('authUid', '==', user.uid));
-          const querySnap = await getDocs(q);
-          
-          if (!querySnap.empty) {
-            const docSnap = querySnap.docs[0];
-            const data = docSnap.data();
-            const fallbackRole = data.role || data.type || 'student';
-            
-            // The users collection is now the single source of truth for all roles.
-            // No legacy merging from 'instructors' or 'students' is needed.
+          let foundDoc = null;
+          let collectionName = '';
 
+          const studentQ = query(collection(db, 'students'), where('authUid', '==', user.uid));
+          const studentSnap = await getDocs(studentQ);
+          if (!studentSnap.empty) {
+            foundDoc = studentSnap.docs[0];
+            collectionName = 'students';
+          } else {
+            const instructorQ = query(collection(db, 'instructors'), where('authUid', '==', user.uid));
+            const instructorSnap = await getDocs(instructorQ);
+            if (!instructorSnap.empty) {
+              foundDoc = instructorSnap.docs[0];
+              collectionName = 'instructors';
+            } else {
+              const adminQ = query(collection(db, 'admins'), where('authUid', '==', user.uid));
+              const adminSnap = await getDocs(adminQ);
+              if (!adminSnap.empty) {
+                foundDoc = adminSnap.docs[0];
+                collectionName = 'admins';
+              }
+            }
+          }
+          
+          if (foundDoc) {
+            const data = foundDoc.data();
+            const role = data.role || data.type || collectionName.slice(0, -1);
+            
             // TEMP: Console debug for user and session safety validation
-            console.log('User Profile Fetched:', data);
+            console.log('User Profile Fetched from ' + collectionName + ':', data);
 
             if (!data.role) {
-              await setDoc(doc(db, 'users', docSnap.id), { role: fallbackRole }, { merge: true });
+              await setDoc(doc(db, collectionName, foundDoc.id), { role }, { merge: true });
             }
 
-            setUserProfile({ id: docSnap.id, ...data, role: fallbackRole });
+            setUserProfile({ id: foundDoc.id, ...data, role });
           } else {
             // Fallback for new unlinked seed accounts (like Alex)
             const isAlex = user.email === 'alex@example.com';
@@ -80,11 +101,16 @@ export const AuthProvider = ({ children }) => {
               currentStep: isAlex ? 'Theory Exam' : 'Medical Check',
               createdAt: new Date().toISOString()
             };
-            if (isAlex) await setDoc(doc(db, 'users', newCustomId), defaultProfile);
+            if (isAlex) await setDoc(doc(db, 'students', newCustomId), defaultProfile);
             setUserProfile(defaultProfile);
           }
         } catch (error) {
           console.error('Error fetching user profile:', error);
+          // If we fail to fetch or create the profile, don't leave the app stuck in an infinite loading state.
+          // Clear the user so they can try logging in again, or you could add an error state here.
+          setCurrentUser(null);
+          setUserProfile(null);
+          await signOut(auth);
         }
       } else {
         setCurrentUser(null);
@@ -97,7 +123,7 @@ export const AuthProvider = ({ children }) => {
 
   const loginMockUser = (profile) => {
     const mockUserObj = {
-      uid: profile.uid || 'mock-uid',
+      uid: profile.authUid || profile.id || profile.uid || 'mock-uid',
       email: profile.email,
       displayName: profile.name
     };

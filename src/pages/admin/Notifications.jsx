@@ -16,34 +16,23 @@ export default function AdminNotifications() {
     setLoading(true);
     
     try {
-      // Very basic mass notification implementation
-      // 1. Get users based on target
+      const { sendNotification } = await import('../../utils/notifications');
       let queryRef = collection(db, 'users');
-      // For a real app, we'd query by role. For now, fetch all and filter in memory for simplicity of demo,
-      // or just assume we're broadcasting.
       const usersSnap = await getDocs(queryRef);
       const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       
       const targetUsers = users.filter(u => {
         if (target === 'all_students') return u.role === 'student';
         if (target === 'all_instructors') return u.role === 'instructor';
-        return true; // all
+        return true; 
       });
 
-      // 2. Add notification doc for each user
       const promises = targetUsers.map(user => 
-        addDoc(collection(db, 'notifications'), {
+        sendNotification({
           userId: user.id,
-          studentId: user.id,
           title,
           message,
-          body: message,
-          type: 'alert',
-          icon: '🔔',
-          isRead: false,
-          unread: true,
-          date: new Date().toISOString(),
-          createdAt: new Date().toISOString()
+          type: 'alert'
         })
       );
 

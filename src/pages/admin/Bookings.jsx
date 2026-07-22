@@ -9,6 +9,7 @@ import { TIME_SLOTS, VEHICLE_TYPES } from '../../utils/schedulingEngine';
 export default function AdminBookings() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [instructorsLoading, setInstructorsLoading] = useState(true);
   const [instructors, setInstructors] = useState([]);
   const [allStudents, setAllStudents] = useState([]);
 
@@ -32,19 +33,22 @@ export default function AdminBookings() {
   useEffect(() => {
     // Fetch instructors
     const fetchInstructors = async () => {
+      setInstructorsLoading(true);
       try {
-        const q = query(collection(db, 'users'), where('role', '==', 'instructor'));
+        const q = query(collection(db, 'instructors'));
         const snap = await getDocs(q);
         setInstructors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error('Error fetching instructors:', err);
+      } finally {
+        setInstructorsLoading(false);
       }
     };
 
     // Fetch students
     const fetchStudents = async () => {
       try {
-        const q = query(collection(db, 'users'), where('role', '==', 'student'));
+        const q = query(collection(db, 'students'));
         const snap = await getDocs(q);
         setAllStudents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (err) {
@@ -55,17 +59,43 @@ export default function AdminBookings() {
     fetchInstructors();
     fetchStudents();
 
-    const q = query(collection(db, 'bookings'), orderBy('date', 'desc'));
-    const unsub = onSnapshot(q, (snap) => {
-      setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    // Listen to BOTH 'bookings' and 'training_slots' so we never miss student-created bookings
+    let bookingsList = [];
+    let slotsList = [];
+    const mergeBoth = () => {
+      const combined = [...bookingsList, ...slotsList];
+      combined.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      setBookings(combined);
       setLoading(false);
+    };
+
+    const q1 = query(collection(db, 'bookings'));
+    const unsub1 = onSnapshot(q1, (snap) => {
+      bookingsList = snap.docs.map(d => ({ id: d.id, ...d.data(), _collection: 'bookings' }));
+      mergeBoth();
     });
-    return unsub;
+
+    const q2 = query(collection(db, 'training_slots'));
+    const unsub2 = onSnapshot(q2, (snap) => {
+      slotsList = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        _collection: 'training_slots',
+        // Normalize field names so the UI renders correctly
+        timeSlot: d.data().timeSlot || (d.data().startTime ? `${d.data().startTime} - ${d.data().endTime}` : d.data().time || ''),
+        vehicle: d.data().vehicle || d.data().vehicleType || 'Not specified',
+      }));
+      mergeBoth();
+    });
+
+    return () => { unsub1(); unsub2(); };
   }, []);
 
   const handleStatusUpdate = async (id, status) => {
     try {
-      await updateDoc(doc(db, 'bookings', id), { status });
+      const booking = bookings.find(b => b.id === id);
+      const col = booking?._collection || 'bookings';
+      await updateDoc(doc(db, col, id), { status });
     } catch (err) {
       console.error(err);
     }
@@ -75,30 +105,71 @@ export default function AdminBookings() {
     try {
       const selectedInst = instructors.find(i => i.id === instructorId);
       const instructorName = selectedInst ? selectedInst.name : 'Any';
+      const col = booking._collection || 'bookings';
       
-      await updateDoc(doc(db, 'bookings', booking.id), {
+      // Only change status if it was already assigned/scheduled, or if changing to 'Any'
+      let newStatus = booking.status;
+      if (instructorId === 'Any') newStatus = 'pending';
+      else if (booking.status === 'pending' || booking.status === 'pending_payment_approval') {
+         // keep it pending until they click Approve
+      }
+
+      await updateDoc(doc(db, col, booking.id), {
         instructorId,
         instructorName,
-        status: instructorId !== 'Any' ? 'assigned' : 'pending'
+        status: newStatus
       });
 
-      if (instructorId !== 'Any') {
-        const scheduleId = `SCH-${booking.id}`;
-        await setDoc(doc(db, 'schedules', scheduleId), {
-          bookingId: booking.id,
-          instructorId: instructorId,
-          instructorName: instructorName,
-          studentId: booking.studentId,
-          studentName: booking.studentName || 'Unknown',
-          date: booking.date,
-          time: booking.timeSlot,
-          vehicle: booking.vehicle || 'Any',
-          status: 'scheduled',
-          createdAt: new Date().toISOString()
-        }, { merge: true });
-      }
     } catch (err) {
       console.error('Error assigning instructor:', err);
+    }
+  };
+
+  const handleApproveBooking = async (booking) => {
+    try {
+      const instId = booking.instructorId || 'Any';
+      if (instId === 'Any') {
+        alert("Please assign an instructor from the dropdown first before approving.");
+        return;
+      }
+      const selectedInst = instructors.find(i => i.id === instId);
+      const instructorName = selectedInst ? selectedInst.name : 'Unknown';
+      const col = booking._collection || 'bookings';
+      
+      await updateDoc(doc(db, col, booking.id), {
+        status: 'scheduled',
+        instructorName
+      });
+
+      const scheduleId = `SCH-${booking.id}`;
+      await setDoc(doc(db, 'sessions', scheduleId), {
+        bookingId: booking.id,
+        instructorId: instId,
+        instructorName: instructorName,
+        studentId: booking.studentId,
+        studentName: booking.studentName || booking.student_name || 'Unknown',
+        date: booking.date,
+        time: booking.timeSlot || booking.time || '',
+        timeSlot: booking.timeSlot || booking.time || '',
+        vehicle: booking.vehicle || booking.vehicleType || 'Any',
+        status: 'scheduled',
+        createdAt: new Date().toISOString()
+      }, { merge: true });
+
+    } catch (err) {
+      console.error('Error approving booking:', err);
+    }
+  };
+
+  const handleRejectBooking = async (booking) => {
+    if (!window.confirm("Are you sure you want to reject this booking?")) return;
+    try {
+      const col = booking._collection || 'bookings';
+      await updateDoc(doc(db, col, booking.id), { status: 'cancelled' });
+      const scheduleId = `SCH-${booking.id}`;
+      await updateDoc(doc(db, 'sessions', scheduleId), { status: 'cancelled' }).catch(() => {});
+    } catch (err) {
+      console.error('Error rejecting booking:', err);
     }
   };
 
@@ -108,6 +179,7 @@ export default function AdminBookings() {
       case 'assigned': return 'bg-blue-100 text-blue-700';
       case 'scheduled': return 'bg-purple-100 text-purple-700';
       case 'pending': return 'bg-yellow-100 text-yellow-700';
+      case 'pending_payment_approval': return 'bg-red-100 text-red-700';
       case 'cancelled': return 'bg-red-100 text-red-700';
       case 'completed': return 'bg-gray-100 text-gray-700';
       case 'ongoing': return 'bg-orange-100 text-orange-700';
@@ -180,7 +252,7 @@ export default function AdminBookings() {
       // If creating a new student, save them first
       if (studentMode === 'new') {
         const newStudentId = await generateCustomId('STU');
-        await setDoc(doc(db, 'users', newStudentId), {
+        await setDoc(doc(db, 'students', newStudentId), {
           id: newStudentId,
           name: walkinForm.newStudentName.trim(),
           phone: walkinForm.newStudentPhone.trim(),
@@ -214,9 +286,9 @@ export default function AdminBookings() {
         createdAt: new Date().toISOString(),
       });
 
-      // Create schedule entry
+      // Create session entry
       const scheduleId = `SCH-${bookingId}`;
-      await setDoc(doc(db, 'schedules', scheduleId), {
+      await setDoc(doc(db, 'sessions', scheduleId), {
         bookingId: bookingId,
         instructorId: walkinForm.instructorId,
         instructorName: instructor?.name || '',
@@ -315,17 +387,27 @@ export default function AdminBookings() {
                         {b.status || 'pending'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right flex justify-end gap-2">
-                      <select 
-                        className="px-2 py-1 text-xs border rounded bg-gray-50 hover:bg-gray-100 cursor-pointer text-gray-700 focus:outline-none"
-                        value="" 
-                        onChange={(e) => { if(e.target.value) handleStatusUpdate(b.id, e.target.value) }}
-                      >
-                        <option value="">Update Status...</option>
-                        <option value="scheduled">Scheduled</option>
-                        <option value="assigned">Assigned</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end gap-2 items-center">
+                        {(b.status === 'pending' || b.status === 'pending_payment_approval') ? (
+                          <>
+                            <button onClick={() => handleApproveBooking(b)} className="flex items-center justify-center gap-1 w-20 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 font-bold text-xs transition shadow-sm">✓ Approve</button>
+                            <button onClick={() => handleRejectBooking(b)} className="flex items-center justify-center gap-1 w-20 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 font-bold text-xs transition shadow-sm">✕ Reject</button>
+                          </>
+                        ) : (
+                          <select 
+                            className="px-3 py-1.5 text-xs border rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                            value="" 
+                            onChange={(e) => { if(e.target.value) handleStatusUpdate(b.id, e.target.value) }}
+                          >
+                            <option value="">Update Status...</option>
+                            <option value="scheduled">Scheduled</option>
+                            <option value="assigned">Assigned</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="completed">Completed</option>
+                          </select>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -489,26 +571,24 @@ export default function AdminBookings() {
                   <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
                     <UserPlus size={13}/> Assign Instructor
                   </div>
-                  {walkinForm.date && walkinForm.timeSlotId ? (
-                    walkinAvailableInstructors.length > 0 ? (
-                      <select
-                        className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-                        value={walkinForm.instructorId}
-                        onChange={e => setWalkinForm(p => ({ ...p, instructorId: e.target.value }))}
-                      >
-                        <option value="">Select instructor</option>
-                        {walkinAvailableInstructors.map(inst => (
-                          <option key={inst.id} value={inst.id}>{inst.name}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">
-                        <AlertCircle size={14}/> No instructors available at this date and time.
-                      </div>
-                    )
+                  {instructorsLoading ? (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-gray-50 border border-gray-100 text-gray-500 text-xs font-semibold">
+                      <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"/> Loading instructors...
+                    </div>
+                  ) : walkinAvailableInstructors.length > 0 ? (
+                    <select
+                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                      value={walkinForm.instructorId}
+                      onChange={e => setWalkinForm(p => ({ ...p, instructorId: e.target.value }))}
+                    >
+                      <option value="">Select instructor</option>
+                      {walkinAvailableInstructors.map(inst => (
+                        <option key={inst.id} value={inst.id}>{inst.name}</option>
+                      ))}
+                    </select>
                   ) : (
-                    <div className="text-xs text-gray-400 italic p-3 bg-gray-50 rounded-lg border border-gray-100">
-                      Select a date and time slot first to see available instructors.
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">
+                      <AlertCircle size={14}/> No instructors available.
                     </div>
                   )}
                 </div>

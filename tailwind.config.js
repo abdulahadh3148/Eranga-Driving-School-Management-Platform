@@ -8,64 +8,37 @@ export default {
   theme: {
     extend: {
       colors: {
-        "on-tertiary-container": "#959fb3",
-        "on-secondary-container": "#5b1c00",
-        "secondary-fixed-dim": "#ffb599",
-        "primary-container": "#1a365d",
-        "secondary": "#a73a00",
-        "error-container": "#ffdad6",
-        "error": "#ba1a1a",
-        "on-tertiary": "#ffffff",
-        "on-secondary-fixed": "#370e00",
-        "surface-container-highest": "#e0e3e5",
-        "outline": "#74777f",
-        "on-primary-fixed": "#001b3c",
-        "secondary-fixed": "#ffdbce",
-        "inverse-surface": "#2d3133",
-        "background": "#f7fafc",
-        "surface-container": "#ebeef0",
-        "inverse-primary": "#adc7f7",
-        "tertiary-fixed": "#d9e3f9",
-        "on-error": "#ffffff",
-        "on-secondary": "#ffffff",
-        "surface-container-low": "#f1f4f6",
-        "on-tertiary-fixed-variant": "#3d4759",
-        "surface-dim": "#d7dadc",
-        "surface-bright": "#f7fafc",
-        "tertiary-container": "#2c3647",
-        "surface": "#f7fafc",
-        "on-secondary-fixed-variant": "#7f2b00",
-        "tertiary-fixed-dim": "#bdc7dc",
-        "on-error-container": "#93000a",
-        "secondary-container": "#fd6b29",
-        "on-primary-container": "#86a0cd",
-        "surface-tint": "#455f88",
-        "on-primary-fixed-variant": "#2d476f",
-        "on-surface-variant": "#43474e",
-        "on-background": "#181c1e",
-        "on-surface": "#181c1e",
-        "inverse-on-surface": "#eef1f3",
-        "tertiary": "#172131",
-        "surface-container-lowest": "#ffffff",
-        "outline-variant": "#c4c6cf",
-        "on-tertiary-fixed": "#121c2c",
-        "on-primary": "#ffffff",
-        "surface-variant": "#e0e3e5",
-        "primary-fixed-dim": "#adc7f7",
-        "primary": "#002045",
-        "primary-fixed": "#d6e3ff",
-        "surface-container-high": "#e5e9eb"
+        primary: {
+          DEFAULT: '#4F46E5', // Indigo 600
+          hover: '#4338CA',   // Indigo 700
+          light: '#EEF2FF',   // Indigo 50
+        },
+        surface: {
+          DEFAULT: '#F8FAFC',
+          card: '#FFFFFF',
+        }
       },
       fontFamily: {
-        "headline-md": ["Work Sans", "sans-serif"],
-        "headline-lg-mobile": ["Work Sans", "sans-serif"],
-        "headline-lg": ["Work Sans", "sans-serif"],
-        "body-md": ["Inter", "sans-serif"],
-        "label-md": ["JetBrains Mono", "monospace"],
-        "label-sm": ["JetBrains Mono", "monospace"],
-        "body-lg": ["Inter", "sans-serif"],
-        "display": ["Work Sans", "sans-serif"]
+        heading: ["Plus Jakarta Sans", "sans-serif"],
+        display: ["Outfit", "sans-serif"],
+        body: ["Inter", "sans-serif"],
       },
+      animation: {
+        'fade-up': 'fadeUp 0.8s ease-out forwards',
+        'blob-bounce': 'blobBounce 20s infinite alternate',
+      },
+      keyframes: {
+        fadeUp: {
+          '0%': { opacity: '0', transform: 'translateY(30px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        blobBounce: {
+          '0%': { transform: 'translate(0, 0) scale(1)' },
+          '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+          '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+          '100%': { transform: 'translate(0, 0) scale(1)' },
+        }
+      }
     },
   },
   plugins: [],

@@ -1,44 +1,45 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* Core Colors */
-  --primary: #0B2545;
-  --primary-hover: #16335a;
-  --primary-light: #e7eeff;
+  /* Core Colors (Premium Indigo) */
+  --primary: #4F46E5;
+  --primary-hover: #4338CA;
+  --primary-light: #EEF2FF;
   
   /* Status Colors */
-  --success: #16a34a;
-  --warning: #3C1D00;
-  --error: #ba1a1a;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --error: #EF4444;
   
   /* Neutral Colors (Surfaces) */
-  --bg-page: #F1F4F9;
+  --bg-page: #F8FAFC;
   --bg-card: #ffffff;
-  --border: #dee2e6;
-  --outline-variant: #dee2e6;
+  --border: #E2E8F0;
+  --outline-variant: #CBD5E1;
   
   /* Text Colors */
-  --text-main: #111c2d;
-  --text-muted: #505f76;
+  --text-main: #0F172A;
+  --text-muted: #64748B;
   --text-on-primary: #ffffff;
   
   /* Elevation (Shadows) */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 20px rgba(79, 70, 229, 0.3);
   
   /* Tokens */
-  --radius-lg: 1rem;
+  --radius-lg: 1.25rem;
   --radius-md: 0.75rem;
-  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Typography Scale */
-  --font-display: 'Plus Jakarta Sans', 'Hanken Grotesk', system-ui, sans-serif;
-  --font-heading: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-display: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-heading: 'Plus Jakarta Sans', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
@@ -225,22 +226,33 @@ body {
 
 /* Obsidian Custom Theme Classes */
 .hairline-border {
-  border: 1px solid #dee2e6;
+  border: 1px solid #E2E8F0;
 }
 .obsidian-card {
   background-color: #ffffff;
-  border: 1px solid #dee2e6;
-  transition: border-color 0.2s ease;
+  border: 1px solid #E2E8F0;
+  transition: border-color 0.3s ease;
 }
 .obsidian-card:hover {
-  border-color: #dee2e6;
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md);
 }
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
 .progress-line-active {
-  background: linear-gradient(90deg, #16a34a 0%, #16a34a 50%, #0B2545 50%, #0B2545 100%);
+  background: linear-gradient(90deg, #10B981 0%, #10B981 50%, var(--primary) 50%, var(--primary) 100%);
 }
+
+/* Typography Utility Mappings (Backward Compatibility) */
+.font-headline-xl { font-family: var(--font-display); }
+.font-headline-lg { font-family: var(--font-display); }
+.font-headline-md { font-family: var(--font-heading); }
+.font-body-lg { font-family: var(--font-body); font-size: 1.125rem; }
+.font-body-md { font-family: var(--font-body); font-size: 1rem; }
+.font-body-sm { font-family: var(--font-body); font-size: 0.875rem; }
+.font-label-md { font-family: var(--font-body); font-size: 0.875rem; font-weight: 600; }
+.font-label-sm { font-family: var(--font-body); font-size: 0.75rem; font-weight: 600; }
 
 
 

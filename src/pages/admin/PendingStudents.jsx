@@ -1,34 +1,47 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { db } from '../../firebase/config';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { CheckCircle, XCircle } from 'lucide-react';
+import { sendNotification } from '../../utils/notifications';
 
 export default function PendingStudents() {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchStudents = async () => {
+  useEffect(() => {
     setLoading(true);
-    try {
-      const q = query(collection(db, 'users'), where('role', '==', 'student'), where('status', '==', 'pending'));
-      const snap = await getDocs(q);
-      setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (err) {
-      console.error(err);
-    } finally {
+    const q = query(collection(db, 'students'), where('status', '==', 'pending'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log("Fetched Pending Students: ", data);
+      setStudents(data);
       setLoading(false);
-    }
-  };
+    }, (err) => {
+      console.error(err);
+      setLoading(false);
+    });
 
-  useEffect(() => { fetchStudents(); }, []);
+    return () => unsubscribe();
+  }, []);
 
   const handleAction = async (id, status) => {
     const confirmMsg = status === 'approved' ? 'approve' : 'reject';
     if (!window.confirm(`Are you sure you want to ${confirmMsg} this student?`)) return;
     try {
-      await updateDoc(doc(db, 'users', id), { status });
-      fetchStudents(); // refresh
+      await updateDoc(doc(db, 'students', id), { status });
+      
+      // Send notification to the student
+      await sendNotification({
+        userId: id, // Target the specific student ID
+        title: status === 'approved' ? 'Account Approved' : 'Account Rejected',
+        message: status === 'approved' 
+          ? 'Your account has been approved by the admin. You can now complete your setup.'
+          : 'Your account registration was rejected by the admin. Please contact support.',
+        type: status === 'approved' ? 'success' : 'error',
+        link: '/student'
+      });
+
     } catch (err) {
       console.error(err);
     }

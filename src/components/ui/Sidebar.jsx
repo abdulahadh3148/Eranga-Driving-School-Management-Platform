@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
-import { Menu, X, ChevronRight, LogOut, User } from 'lucide-react';
+import { Menu, X, ChevronRight, ChevronDown, LogOut } from 'lucide-react';
 
 const NavItem = ({ item, location, collapsed }) => {
   const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
@@ -29,6 +29,83 @@ const NavItem = ({ item, location, collapsed }) => {
   );
 };
 
+const NavGroup = ({ item, location, collapsed }) => {
+  const Icon = item.icon;
+  
+  // Check if any child is active
+  const isChildActive = item.children?.some(child => 
+    location.pathname === child.path || location.pathname.startsWith(child.path + '/')
+  );
+  
+  const [open, setOpen] = useState(isChildActive);
+
+  // Auto-open when a child becomes active
+  useEffect(() => {
+    if (isChildActive) setOpen(true);
+  }, [isChildActive]);
+
+  if (collapsed) {
+    // When collapsed, show just the icon with a tooltip listing children
+    return (
+      <div className="relative group">
+        <button
+          onClick={() => setOpen(!open)}
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 w-full
+            ${isChildActive ? 'bg-primary/50 text-white shadow-lg shadow-orange-500/30' : 'text-gray-400 hover:bg-white/10 hover:text-white'}`}
+        >
+          <Icon size={20} className="shrink-0" />
+        </button>
+        <div className="absolute left-full ml-2 top-0 bg-gray-800 rounded-lg py-2 min-w-[180px] opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto z-50 transition-opacity shadow-xl">
+          <p className="px-3 py-1 text-xs font-bold text-gray-400 uppercase">{item.label}</p>
+          {item.children.map(child => {
+            const ChildIcon = child.icon;
+            const childActive = location.pathname === child.path || location.pathname.startsWith(child.path + '/');
+            return (
+              <Link key={child.path} to={child.path}
+                className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors ${childActive ? 'text-primary font-bold' : 'text-gray-300 hover:text-white'}`}>
+                <ChildIcon size={14} /> {child.label}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 w-full
+          ${isChildActive ? 'text-white' : 'text-gray-400 hover:bg-white/10 hover:text-white'}`}
+      >
+        <Icon size={20} className="shrink-0" />
+        <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">{item.label}</span>
+        <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>
+          <ChevronDown size={14} className="shrink-0" />
+        </motion.div>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="ml-4 pl-3 border-l border-white/10 mt-1 space-y-0.5">
+              {item.children.map(child => (
+                <NavItem key={child.path} item={child} location={location} collapsed={false} />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const SidebarContent = ({ collapsed, setCollapsed, title, items, userProfile, handleLogout, location }) => (
   <div className="flex flex-col h-full bg-gray-950 border-r border-white/10">
     {/* Header */}
@@ -49,7 +126,11 @@ const SidebarContent = ({ collapsed, setCollapsed, title, items, userProfile, ha
 
     {/* Nav Items */}
     <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-      {items.map((item) => <NavItem key={item.path} item={item} location={location} collapsed={collapsed} />)}
+      {items.map((item, idx) => 
+        item.children 
+          ? <NavGroup key={item.label + idx} item={item} location={location} collapsed={collapsed} />
+          : <NavItem key={item.path} item={item} location={location} collapsed={collapsed} />
+      )}
     </nav>
 
     {/* User Footer */}
@@ -127,7 +208,7 @@ export default function Sidebar({ items, title }) {
                 </button>
               </div>
               <SidebarContent
-                collapsed={collapsed}
+                collapsed={false}
                 setCollapsed={setCollapsed}
                 title={title}
                 items={items}

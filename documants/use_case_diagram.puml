@@ -1,0 +1,69 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam noteBackgroundColor #fdf6e3
+
+actor "Public Visitor" as Visitor
+actor Student
+actor Instructor
+actor Admin
+
+package "Driving School Management System" {
+    
+    ' --- Public Visitor Flow ---
+    usecase "Browse Website & Packages" as UC_Browse
+    usecase "Register Account" as UC_Register
+    
+    ' --- Shared Authentication ---
+    usecase "Secure Login" as UC_Login
+    
+    ' --- Student Flow ---
+    usecase "Upload RMV Documents\n(Medical & L-Permit)" as UC_UploadDocs
+    usecase "Enroll & Pay for Package" as UC_Enroll
+    usecase "Request Training Session" as UC_BookSlot
+    usecase "Track DMT Progress" as UC_TrackProgress
+    
+    ' --- Instructor Flow ---
+    usecase "View Daily Scheduled Sessions" as UC_ViewDaily
+    usecase "Mark Session Complete" as UC_CompleteSession
+    usecase "Update Syllabus Checklist" as UC_UpdateSkills
+    
+    ' --- Admin Flow ---
+    usecase "Verify RMV Documents" as UC_VerifyDocs
+    usecase "Approve & Assign Bookings" as UC_AssignBookings
+    usecase "Manage Financials & Payments" as UC_ManagePayments
+    usecase "Manage Fleet & Staff" as UC_ManageResources
+    usecase "View System Reports" as UC_ViewReports
+
+    ' --- Includes ---
+    UC_CompleteSession .> UC_UpdateSkills : <<include>>
+    
+    ' --- Precondition Note ---
+    note right of UC_BookSlot
+      Precondition: L-Permit must be 
+      verified by Admin first.
+    end note
+}
+
+' --- Connections ---
+Visitor --> UC_Browse
+Visitor --> UC_Register
+
+Student --> UC_Login
+Student --> UC_UploadDocs
+Student --> UC_Enroll
+Student --> UC_BookSlot
+Student --> UC_TrackProgress
+
+Instructor --> UC_Login
+Instructor --> UC_ViewDaily
+Instructor --> UC_CompleteSession
+
+Admin --> UC_Login
+Admin --> UC_VerifyDocs
+Admin --> UC_AssignBookings
+Admin --> UC_ManagePayments
+Admin --> UC_ManageResources
+Admin --> UC_ViewReports
+
+@enduml

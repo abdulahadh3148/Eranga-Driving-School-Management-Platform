@@ -32,8 +32,8 @@ export const filterData = (data, filters, dateField = 'createdAt') => {
 /**
  * Students Aggregation
  */
-export const getStudentMetrics = (users, schedules, filters) => {
-  const students = filterData(users.filter(u => u.role === 'student'), filters);
+export const getStudentMetrics = (studentsList, schedules, filters) => {
+  const students = filterData(studentsList, filters);
   
   const total = students.length;
   const active = students.filter(s => s.status === 'approved' || s.status === 'active').length;
@@ -61,8 +61,8 @@ export const getStudentMetrics = (users, schedules, filters) => {
 /**
  * Instructors Aggregation
  */
-export const getInstructorMetrics = (users, schedules, filters) => {
-  const instructors = users.filter(u => u.role === 'instructor');
+export const getInstructorMetrics = (instructorsList, schedules, filters) => {
+  const instructors = instructorsList;
   const filteredSchedules = filterData(schedules, filters, 'date');
 
   const total = instructors.length;

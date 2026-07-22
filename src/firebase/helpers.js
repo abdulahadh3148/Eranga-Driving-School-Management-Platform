@@ -163,3 +163,52 @@ export async function fetchStudentProgress(studentId) {
   sessions.sort((a, b) => new Date(a.date) - new Date(b.date));
   return sessions;
 }
+
+/**
+ * Predefined training schedules for automatic schedule generation on onboarding.
+ */
+export const PREDEFINED_SCHEDULES = {
+  'Car Manual': [
+    { sessionOrder: 1, sessionTitle: 'Basic Controls (Steering, Clutch, Gear)' },
+    { sessionOrder: 2, sessionTitle: 'Starting & Stopping' },
+    { sessionOrder: 3, sessionTitle: 'Gear Control Practice' },
+    { sessionOrder: 4, sessionTitle: 'Road Driving - Level 1' },
+    { sessionOrder: 5, sessionTitle: 'Road Driving - Level 2' },
+    { sessionOrder: 6, sessionTitle: 'Parking Practice' },
+    { sessionOrder: 7, sessionTitle: 'Reverse Driving' },
+    { sessionOrder: 8, sessionTitle: 'Traffic Rules Practical' },
+  ],
+  'Car Auto': [
+    { sessionOrder: 1, sessionTitle: 'Basic Controls (Steering, Brakes, Accelerator)' },
+    { sessionOrder: 2, sessionTitle: 'Starting & Stopping' },
+    { sessionOrder: 3, sessionTitle: 'Road Driving - Level 1' },
+    { sessionOrder: 4, sessionTitle: 'Road Driving - Level 2' },
+    { sessionOrder: 5, sessionTitle: 'Parking Practice' },
+    { sessionOrder: 6, sessionTitle: 'Reverse Driving' },
+    { sessionOrder: 7, sessionTitle: 'Traffic Rules Practical' },
+  ],
+  'Motorcycle': [
+    { sessionOrder: 1, sessionTitle: 'Basic Controls (Balance, Brakes)' },
+    { sessionOrder: 2, sessionTitle: 'Starting & Stopping' },
+    { sessionOrder: 3, sessionTitle: 'Figure 8 Practice' },
+    { sessionOrder: 4, sessionTitle: 'Road Driving - Level 1' },
+    { sessionOrder: 5, sessionTitle: 'Traffic Rules Practical' },
+  ],
+  'Three Wheeler': [
+    { sessionOrder: 1, sessionTitle: 'Basic Controls' },
+    { sessionOrder: 2, sessionTitle: 'Starting & Stopping' },
+    { sessionOrder: 3, sessionTitle: 'Figure 8 Practice' },
+    { sessionOrder: 4, sessionTitle: 'Road Driving - Level 1' },
+    { sessionOrder: 5, sessionTitle: 'Traffic Rules Practical' },
+  ],
+  'Dual (Car + Bike)': [
+    { sessionOrder: 1, sessionTitle: 'Motorcycle: Basic Controls (Balance, Brakes)' },
+    { sessionOrder: 2, sessionTitle: 'Motorcycle: Figure 8 Practice' },
+    { sessionOrder: 3, sessionTitle: 'Car: Basic Controls (Steering, Clutch, Gear)' },
+    { sessionOrder: 4, sessionTitle: 'Car: Starting & Stopping' },
+    { sessionOrder: 5, sessionTitle: 'Car: Gear Control Practice' },
+    { sessionOrder: 6, sessionTitle: 'Car: Road Driving - Level 1' },
+    { sessionOrder: 7, sessionTitle: 'Car: Parking Practice' },
+    { sessionOrder: 8, sessionTitle: 'Car & Bike: Traffic Rules Practical' },
+  ],
+};

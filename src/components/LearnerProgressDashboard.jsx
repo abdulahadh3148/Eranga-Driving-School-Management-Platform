@@ -11,56 +11,58 @@ import {
 } from 'lucide-react';
 import './LearnerProgressDashboard.css';
 
-export default function LearnerProgressDashboard({ user, past, mockResults, goTo }) {
+export default function LearnerProgressDashboard({ user, past, mockResults, goTo, userProfile }) {
   const totalClasses = user?.classesTotal || 14;
   const completedClasses = user?.classesCompleted || 0;
   const mockTestsDone = mockResults?.length || 0;
   const hasPassedMock = mockResults?.some(r => r.passed || r.score >= 70);
 
-  // ── Simple 6-stage journey ──
-  // Each stage derives its status from actual data — no scoring system
+  const medicalApproved = userProfile?.medical_status === 'approved';
+  const lPermitApproved = userProfile?.l_permit_status === 'approved' || userProfile?.permit_status === 'approved';
+
+  // ── Practice-to-Test Roadmap ──
   const stages = [
     {
       id: 1,
-      title: 'Registration',
-      desc: 'Profile & documents submitted',
-      icon: <UserCheck size={20} />,
-      done: !!user?.is_profile_completed,
+      title: 'Learner Permit',
+      desc: lPermitApproved ? `Verified by Admin` : 'Pending RMV Exam',
+      icon: <Check size={20} />,
+      done: lPermitApproved,
     },
     {
       id: 2,
-      title: 'Medical Clearance',
-      desc: user?.medicalStatus === 'approved' ? 'Approved by Admin' : (user?.medicalStatus === 'pending' ? 'Pending Approval' : 'Upload Medical Report'),
-      icon: <ClipboardCheck size={20} />,
-      done: user?.medicalStatus === 'approved',
+      title: 'Beginner Lessons',
+      desc: completedClasses >= 3 ? 'Completed' : 'Basic car control & safety',
+      icon: <Car size={20} />,
+      done: completedClasses >= 3,
     },
     {
       id: 3,
-      title: 'Learner Permit',
-      desc: user?.permitStatus === 'issued' ? `Issued: ${user?.learnerPermit || ''}` : 'Pending Admin Issuance',
-      icon: <Check size={20} />,
-      done: user?.permitStatus === 'issued',
+      title: 'Intermediate Lessons',
+      desc: completedClasses >= 8 ? 'Completed' : 'Traffic, turning, parking',
+      icon: <Car size={20} />,
+      done: completedClasses >= 8,
     },
     {
       id: 4,
-      title: 'Practice Sessions',
-      desc: `${completedClasses} of ${totalClasses} completed`,
-      icon: <Car size={20} />,
-      done: completedClasses > 0 && completedClasses >= totalClasses,
+      title: 'Advanced Practice',
+      desc: completedClasses >= totalClasses ? 'Completed' : 'Mock test routes',
+      icon: <Trophy size={20} />,
+      done: completedClasses >= totalClasses,
     },
     {
       id: 5,
-      title: 'Trial Test',
-      desc: user?.trialPassed ? 'Passed Final Trial ✓' : 'Complete practice first',
-      icon: <Trophy size={20} />,
-      done: !!user?.trialPassed,
+      title: 'Readiness Review',
+      desc: userProfile?.testReady ? 'Instructor Approved' : 'Pending instructor evaluation',
+      icon: <ClipboardCheck size={20} />,
+      done: !!userProfile?.testReady,
     },
     {
       id: 6,
-      title: 'Payment Completed',
-      desc: user?.outstandingFees <= 0 ? 'Fully Paid' : `Outstanding: Rs. ${user?.outstandingFees || 0}`,
-      icon: <Package size={20} />,
-      done: user?.outstandingFees != null && user?.outstandingFees <= 0,
+      title: 'Road Test',
+      desc: user?.trialPassed ? 'Passed Final Trial ✓' : (userProfile?.testReady ? 'Book your test!' : 'Locked'),
+      icon: <UserCheck size={20} />,
+      done: !!user?.trialPassed,
     },
   ];
 
@@ -146,7 +148,31 @@ export default function LearnerProgressDashboard({ user, past, mockResults, goTo
           })}
         </div>
 
-        <div className="section-label">Payment summary</div>
+        {userProfile?.skills && userProfile.skills.length > 0 && (
+          <>
+            <div className="section-label" style={{ marginTop: '24px' }}>Skill Checklist (Curriculum)</div>
+            <div className="steps-grid" style={{ gridTemplateColumns: '1fr', gap: '8px' }}>
+              {userProfile.skills.map((skill, index) => {
+                const isMastered = skill.level === 2;
+                const isStarted = skill.level === 1;
+                const stateCls = isMastered ? 'done' : isStarted ? 'active' : 'locked';
+                
+                return (
+                  <div key={index} className={`step-card ${stateCls}`} style={{ padding: '12px 16px', minHeight: 'auto' }}>
+                    <div className="step-info" style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="step-title" style={{ fontSize: '14px', marginBottom: 0 }}>{skill.name}</div>
+                      <span className={`step-badge badge-${stateCls}`} style={{ marginTop: 0 }}>
+                        {isMastered ? '✅ Mastered' : isStarted ? '▶️ In Progress' : '🔒 Not Started'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        <div className="section-label" style={{ marginTop: '24px' }}>Payment summary</div>
         <div className="payment-card">
           <div className="payment-row">
             <span className="pay-label">Total Course Fee</span>
