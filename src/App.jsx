@@ -69,7 +69,9 @@ import { seedDatabaseIfNeeded } from './firebase/dbSeeder';
 
 export default function App() {
   useEffect(() => {
-    seedDatabaseIfNeeded();
+    if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEMO_SEED === 'true') {
+      seedDatabaseIfNeeded();
+    }
   }, []);
 
   return (
